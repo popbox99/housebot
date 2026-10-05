@@ -4,9 +4,23 @@ contacts.json
 *.vcf
 *.sqlite
 reminders.json
+location_reminders.json
+memory.json
+watchdog_state.json
+
+# secrets — never commit
 *_password*
 *token*
+*_token*
+immich_key*
+ha_token*
+paperless_token*
+.env
+*.pem
+*.key
 
+# logs & caches
+*.log
 __pycache__/
 *.pyc
 .venv/

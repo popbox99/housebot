@@ -3,10 +3,15 @@
 Weather uses Open-Meteo (no API key). Web search uses a self-hosted SearXNG
 instance (config skills.searxng.base_url) — results are URLs + titles for the
 LLM or the user.
+
+read_url is SSRF-hardened: https only, and hostnames resolving to private,
+loopback, link-local or reserved addresses are refused.
 """
 
+import ipaddress
 import json
 import re
+import socket
 import urllib.parse
 import urllib.request
 
@@ -72,8 +77,34 @@ class Web:
         return "Search results:\n" + "\n".join(
             f"  • {r['title']} — {r['url']}" for r in results)
 
+    def _safe_url(self, url):
+        """https-only, and refuse hosts that resolve to private/reserved space.
+        (Best-effort SSRF guard: TOCTOU DNS rebinding is out of scope here.)"""
+        try:
+            parts = urllib.parse.urlsplit(url)
+        except Exception:
+            return None
+        if parts.scheme != "https" or not parts.hostname:
+            return None
+        try:
+            infos = socket.getaddrinfo(parts.hostname, 443)
+        except Exception:
+            return None
+        for info in infos:
+            try:
+                ip = ipaddress.ip_address(info[4][0])
+            except ValueError:
+                return None
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return None
+        return url
+
     def read_url(self, url, summarize_fn):
         """Fetch a URL's text and summarize via the LLM."""
+        url = self._safe_url(url)
+        if not url:
+            return "I can only fetch https:// pages on public hosts."
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "housebot"})
             with urllib.request.urlopen(req, timeout=30) as r:

@@ -1,29 +1,48 @@
 """OpenAI-compatible HTTP API transport — lets Home Assistant, scripts, or any
-OpenAI-speaking client use the same brain (POST /v1/chat/completions)."""
+OpenAI-speaking client use the same brain (POST /v1/chat/completions).
 
+Security: requires a real token (refuses to start on the default), compared with
+hmac.compare_digest.
+"""
+
+import hashlib
+import hmac
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+DEFAULT_TOKEN = "change-me"
+
 
 class ApiTransport:
+    # push-capable flag: Jobs skips transports that can't proactively message
+    push = False
+
     def __init__(self, cfg, engine):
         self.engine = engine
         self.port = cfg["transports"]["api"].get("port", 8082)
-        self.token = cfg["transports"]["api"].get("token", "change-me")
+        self.token = cfg["transports"]["api"].get("token", "")
+        if not self.token or self.token == DEFAULT_TOKEN:
+            raise RuntimeError(
+                "[api] refusing to start: set transports.api.token in config to a "
+                "long random value (e.g. `openssl rand -hex 32`). The default "
+                "token would let anyone on the network drive the bot.")
+        self.token_hash = hashlib.sha256(self.token.encode()).digest()
+
+    def _auth(self, header):
+        provided = header.replace("Bearer ", "", 1) if header.startswith("Bearer ") else ""
+        return hmac.compare_digest(
+            hashlib.sha256(provided.encode()).digest(), self.token_hash)
 
     def serve_forever(self):
-        engine, token = self.engine, self.token
+        engine = self.engine
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):
                 pass
 
-            def _auth(self):
-                return self.headers.get("Authorization", "") == f"Bearer {token}"
-
             def do_POST(self):
-                if not self._auth():
+                if not self._auth(self.headers.get("Authorization", "")):
                     self.send_response(401); self.end_headers(); return
                 if not self.path.endswith("/chat/completions"):
                     self.send_response(404); self.end_headers(); return

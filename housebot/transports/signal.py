@@ -8,6 +8,8 @@ import time
 
 
 class SignalTransport:
+    push = True   # can proactively message the owner (reminders, alerts)
+
     def __init__(self, cfg, engine):
         t = cfg["transports"]["signal"]
         self.engine = engine
@@ -15,6 +17,9 @@ class SignalTransport:
         self.socket_path = os.path.expanduser(
             t.get("socket", "~/.local/run/signal-cli/socket"))
         self.allowed = set(cfg["bot"].get("allowed_senders") or [])
+        if not self.allowed:
+            print("[signal] SECURITY: bot.allowed_senders is empty - ALL incoming "
+                  "messages will be rejected. Add your sender id/UUID to config.")
         self.sockfile = self.sock = None
 
     def _connect(self):
@@ -54,8 +59,9 @@ class SignalTransport:
                         continue
                     envelope = msg.get("params", {}).get("envelope") or {}
                     dm = envelope.get("dataMessage") or {}
-                    sender = (dm.get("source") or "")
-                    if self.allowed and sender not in self.allowed:
+                    # signal-cli puts the sender on the ENVELOPE, not the dataMessage
+                    sender = envelope.get("source") or ""
+                    if not self.allowed or sender not in self.allowed:
                         continue
                     text = dm.get("message") or ""
                     att_path = None

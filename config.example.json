@@ -39,7 +39,8 @@
                   "token_file": "~/.config/housebot/paperless_token"},
     "homeassistant": {"enabled": false, "base_url": "http://127.0.0.1:8123",
                       "token_file": "~/.config/housebot/ha_token",
-                      "person_entity": "person.me", "zones": {"home": "home"}},
+                      "person_entity": "person.me", "zones": {"home": "home"},
+                      "vacuum_entity": "vacuum.robot"},
     "watchdog": {"enabled": false, "ntfy_topic": "my-housebot-watchdog",
                  "checks": [{"name": "webui", "url": "http://127.0.0.1:8080"}]}
   }

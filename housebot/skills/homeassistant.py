@@ -18,6 +18,7 @@ class HomeAssistant:
         self.base = (s.get("base_url") or "").rstrip("/")
         self.token = self._read_token(s.get("token_file"))
         self.person_entity = s.get("person_entity", "")
+        self.vacuum_entity = s.get("vacuum_entity", "vacuum.robot")
         self.zones = s.get("zones") or {"home": "home"}
         self.loc_path = os.path.join(cfg.data_dir, "location_reminders.json")
 
@@ -119,7 +120,7 @@ class HomeAssistant:
     def vacuum(self, action):
         service = {"start": "start", "dock": "return_to_base", "status": None}.get(action)
         if service is None:
-            st = self.state("vacuum.robot")
+            st = self.state(self.vacuum_entity)
             return f"Vacuum: {st.get('state', 'unknown')}"
         self.call("vacuum", service)
         return f"Vacuum {action} sent."

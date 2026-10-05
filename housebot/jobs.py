@@ -11,7 +11,8 @@ class Jobs:
         self.cfg = cfg
         self.engine = engine
         self.owner = cfg["bot"].get("owner", "")
-        self.senders = senders
+        # only transports that can proactively message get alerts/reminders
+        self.senders = [s for s in senders if getattr(s, "push", False)]
         self.watchdog = None
         try:
             from .skills.watchdog import Watchdog

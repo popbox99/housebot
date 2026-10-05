@@ -49,7 +49,8 @@ DEFAULTS = {
         "paperless": {"enabled": False, "base_url": "http://127.0.0.1:8010",
                       "token_file": ""},
         "homeassistant": {"enabled": False, "base_url": "", "token_file": "",
-                          "person_entity": "", "zones": {"home": "home"}},
+                          "person_entity": "", "zones": {"home": "home"},
+                          "vacuum_entity": "vacuum.robot"},
         "watchdog": {"enabled": False, "ntfy_topic": "",
                      "checks": []}   # [{"name": "webui", "url": "http://..."}]
     }

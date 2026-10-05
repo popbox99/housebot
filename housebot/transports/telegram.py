@@ -7,6 +7,8 @@ import urllib.request
 
 
 class TelegramTransport:
+    push = True   # can proactively message the owner (reminders, alerts)
+
     def __init__(self, cfg, engine):
         t = cfg["transports"]["telegram"]
         self.engine = engine
@@ -16,6 +18,9 @@ class TelegramTransport:
             self.token = open(os.path.expanduser(tf)).read().strip()
         self.base = f"https://api.telegram.org/bot{self.token}"
         self.allowed = set(cfg["bot"].get("allowed_senders") or [])
+        if not self.allowed:
+            print("[telegram] SECURITY: bot.allowed_senders is empty - ALL incoming "
+                  "messages will be rejected. Add your numeric Telegram user id.")
         self.offset = 0
 
     def send(self, chat_id, text):
@@ -37,7 +42,7 @@ class TelegramTransport:
                     msg = upd.get("message") or {}
                     chat_id = (msg.get("chat") or {}).get("id")
                     sender = str(msg.get("from", {}).get("id", chat_id))
-                    if chat_id is None or (self.allowed and sender not in self.allowed):
+                    if chat_id is None or not self.allowed or sender not in self.allowed:
                         continue
                     text = msg.get("text") or ""
                     if not text:
