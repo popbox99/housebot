@@ -23,7 +23,7 @@
   "transports": {
     "signal": {"enabled": false, "socket": "~/.local/run/signal-cli/socket", "account": "+15550100"},
     "telegram": {"enabled": true, "token_file": "~/.config/housebot/telegram_token"},
-    "api": {"enabled": true, "port": 8082, "token": "change-me"}
+    "api": {"enabled": false, "port": 8082, "token": ""}
   },
   "skills": {
     "contacts_json": "~/.local/share/house-contacts/contacts.json",

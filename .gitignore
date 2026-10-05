@@ -16,6 +16,9 @@ immich_key*
 ha_token*
 paperless_token*
 .env
+.env*
+secrets.json
+ADMIN_CREDENTIALS
 *.pem
 *.key
 

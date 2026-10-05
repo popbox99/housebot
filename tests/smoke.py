@@ -95,6 +95,250 @@ check("agenda graceful without caldav", lambda: (
 check("chat graceful without llm", lambda: (
     engine.handle("t", "tell me about quantum computing")[0] != ""))
 
+# -- fixes from the security review ------------------------------------------
+
+import socket
+import threading
+import time
+import urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from housebot import intents
+from housebot.skills.web import Web, _Blocked, _Redirect, _NoRedirect
+from housebot.transports.api import ApiTransport
+from housebot.transports.signal import sender_id
+
+
+def _post(port, messages, token=None):
+    headers = {"Content-Type": "application/json"}
+    if token is not None:
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/v1/chat/completions",
+        data=json.dumps({"messages": messages}).encode(),
+        headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()
+
+
+_API_TOKEN = "smoke-test-token"
+
+
+def _start_api():
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    transport = ApiTransport(
+        {"transports": {"api": {"port": port, "token": _API_TOKEN}}}, engine)
+    threading.Thread(target=transport.serve_forever, daemon=True).start()
+    for _ in range(50):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                return port
+        except OSError:
+            time.sleep(0.05)
+    raise RuntimeError("API did not start listening")
+
+
+def _raises(exc, fn):
+    try:
+        fn()
+    except exc:
+        return True
+    return False
+
+
+def _api_auth():
+    port = _start_api()
+    shopping = [{"role": "user", "content": "whats on my shopping list"}]
+    no_auth = _post(port, shopping, token=None)
+    bad = _post(port, shopping, token="not-the-token")
+    prior = [
+        {"role": "user", "content": "what is Dana Reyes's phone number"},
+        {"role": "assistant", "content": "noted"},
+        {"role": "user", "content": "whats on my shopping list"},
+    ]
+    good_status, good_body = _post(port, prior, token=_API_TOKEN)
+    if no_auth[0] != 401 or bad[0] != 401:
+        raise AssertionError(f"expected 401s, got {no_auth[0]} and {bad[0]}")
+    if good_status != 200 or "shopping" not in good_body.lower():
+        raise AssertionError(f"good token failed: {good_status}")
+    hist = engine.history.get("api") or []
+    if not any("Dana Reyes" in (h.get("content") or "") for h in hist):
+        raise AssertionError("request history was not applied")
+
+
+def _classifier_labels():
+    saved = llm.ask_llm
+
+    def _reply(text):
+        def _ask(cfg, prompt, history=None, backend=None, temperature=None):
+            return text, "stub"
+        return _ask
+
+    try:
+        llm.ask_llm = _reply("PHOTOS the dog")
+        action, arg = intents.classify_llm(engine.chat, "show the album")
+        if action != "PHOTOS" or "dog" not in arg:
+            raise AssertionError(f"{action} {arg}")
+        llm.ask_llm = _reply("VACUUM start")
+        action, arg = intents.classify_llm(engine.chat, "hello robot")
+        if action != "VACUUM" or arg != "start":
+            raise AssertionError(f"{action} {arg}")
+        llm.ask_llm = _reply("READ_URL https://example.com/article")
+        action, arg = intents.classify_llm(engine.chat, "look at this")
+        if action != "READ_URL" or "example.com" not in arg:
+            raise AssertionError(f"{action} {arg}")
+    finally:
+        llm.ask_llm = saved
+    return True
+
+
+def _signal_allowlist():
+    uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    allowed = {"+15555550199", uuid}
+    if sender_id({"sourceNumber": "+15555550199"}, allowed) != "+15555550199":
+        raise AssertionError("sourceNumber")
+    if sender_id({"sourceUuid": uuid}, allowed) != uuid:
+        raise AssertionError("sourceUuid")
+    if sender_id({"source": "+15555550199"}, allowed) != "+15555550199":
+        raise AssertionError("legacy source")
+    if sender_id({"sourceNumber": "+15555550100", "sourceUuid": uuid}, {uuid}) != uuid:
+        raise AssertionError("uuid when number is present but not allowed")
+    if sender_id({"source": "+15555550199", "sourceUuid": "nope"}, allowed) != "+15555550199":
+        raise AssertionError("legacy source among other fields")
+    if sender_id({"sourceUuid": "nope"}, allowed) is not None:
+        raise AssertionError("unknown sender admitted")
+    if sender_id({"sourceNumber": "+15555550199"}, set()) is not None:
+        raise AssertionError("empty allowlist admitted a sender")
+    return True
+
+
+def _ssrf():
+    web = Web({"skills": {}})
+    blocked = [
+        "https://100.64.0.1/latest",
+        "https://100.127.255.254/",
+        "https://10.1.2.3/",
+        "https://127.0.0.1/",
+        "https://169.254.169.254/",
+        "file:///etc/passwd",
+        "http://1.1.1.1/",
+    ]
+    for url in blocked:
+        if web._safe_url(url) is not None:
+            raise AssertionError(f"allowed {url}")
+    if web._safe_url("https://1.1.1.1/") != "https://1.1.1.1/":
+        raise AssertionError("public literal blocked")
+    if web._safe_url("https://100.128.0.1/") is None:
+        raise AssertionError("address just outside CGNAT was blocked")
+
+    real = socket.getaddrinfo
+
+    def _mapped(host, port, *a, **k):
+        return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::ffff:100.64.0.1", port, 0, 0))]
+
+    socket.getaddrinfo = _mapped
+    try:
+        if web._safe_url("https://mapped.example/") is not None:
+            raise AssertionError("v4-mapped CGNAT allowed")
+    finally:
+        socket.getaddrinfo = real
+
+    class _Seq:
+        def __init__(self, events):
+            self.events = list(events)
+            self.urls = []
+
+        def open(self, req, timeout=30):
+            self.urls.append(req.full_url)
+            item = self.events.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+    class _Body:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"<p>ok</p>"
+
+    seq = _Seq([_Redirect("https://100.64.1.5/secret")])
+    web._opener = lambda: seq
+    try:
+        web._fetch_public("https://1.1.1.1/start")
+        raise AssertionError("redirect to CGNAT was fetched")
+    except _Blocked:
+        pass
+    if seq.urls != ["https://1.1.1.1/start"]:
+        raise AssertionError(f"unexpected fetches: {seq.urls}")
+
+    seq_ok = _Seq([_Redirect("https://1.0.0.1/next"), _Body()])
+    web._opener = lambda: seq_ok
+    body = web._fetch_public("https://1.1.1.1/start")
+    if body != b"<p>ok</p>" or seq_ok.urls != ["https://1.1.1.1/start", "https://1.0.0.1/next"]:
+        raise AssertionError("public redirect was not followed")
+
+    class _H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", "https://100.64.0.1/x")
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _H)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        opener = urllib.request.build_opener(_NoRedirect)
+        req = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}/")
+        try:
+            opener.open(req, timeout=3)
+            raise AssertionError("redirect handler followed the hop")
+        except _Redirect as caught:
+            if caught.url != "https://100.64.0.1/x":
+                raise AssertionError(f"redirect url {caught.url}")
+    finally:
+        server.shutdown()
+    return True
+
+
+def _caldav_starts():
+    path = os.path.join(tmp, "caldav-config.json")
+    data = json.load(open(cfg_path))
+    data["caldav"] = {"base_url": "http://127.0.0.1:9", "user": "me"}
+    json.dump(data, open(path, "w"))
+    eng = Engine(Config(path))
+    if eng.calendar is None:
+        raise AssertionError("calendar was not constructed")
+    return True
+
+
+check("api refuses placeholder token", lambda: (
+    _raises(RuntimeError, lambda: ApiTransport(
+        {"transports": {"api": {"token": "change-me"}}}, engine))))
+check("api disabled unless configured", lambda: (
+    cfg["transports"]["api"]["enabled"] is False and
+    json.load(open(os.path.join(os.path.dirname(__file__), "..", "config.example.json")))
+    ["transports"]["api"]["enabled"] is False))
+check("complete keyword", lambda: (
+    intents.keyword_intent("mark the task file taxes done") == ("COMPLETE", "file taxes")
+    and intents.keyword_intent("todo buy stamps")[0] == "TASK"))
+check("classifier keeps skill labels", lambda: _classifier_labels())
+check("signal allowlist fields", lambda: _signal_allowlist())
+check("ssrf blocks cgnat and rechecks redirects", lambda: _ssrf())
+check("caldav base_url does not crash startup", lambda: _caldav_starts())
+check("api auth no/bad/good token", _api_auth)
+
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:
     print(("✓" if ok else "✗") + " " + name + (f"  — {err}" if err else ""))

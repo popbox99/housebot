@@ -36,13 +36,14 @@ class ApiTransport:
 
     def serve_forever(self):
         engine = self.engine
+        auth = self._auth
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):
                 pass
 
             def do_POST(self):
-                if not self._auth(self.headers.get("Authorization", "")):
+                if not auth(self.headers.get("Authorization", "")):
                     self.send_response(401); self.end_headers(); return
                 if not self.path.endswith("/chat/completions"):
                     self.send_response(404); self.end_headers(); return
@@ -50,9 +51,18 @@ class ApiTransport:
                 body = json.loads(self.rfile.read(length) or b"{}")
                 sender = "api"
                 messages = body.get("messages") or []
-                text = messages[-1]["content"] if messages else ""
-                hist = [{"role": m.get("role", "user"), "content": m.get("content", "")}
-                        for m in messages[-4:]]
+                last = messages[-1] if messages and isinstance(messages[-1], dict) else {}
+                text = last.get("content") if isinstance(last.get("content"), str) else ""
+                # The request carries its own context. Keep the three messages
+                # before the last one; handle() appends the current turn.
+                prior = []
+                for m in messages[:-1][-3:]:
+                    if not isinstance(m, dict):
+                        continue
+                    content = m.get("content")
+                    if isinstance(content, str) and content:
+                        prior.append({"role": m.get("role") or "user", "content": content})
+                engine.history[sender] = prior
                 reply, _att = engine.handle(sender, text)
                 if reply is None:
                     reply = ""

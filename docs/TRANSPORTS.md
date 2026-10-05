@@ -10,18 +10,23 @@ Requires [signal-cli](https://github.com/AsamK/signal-cli) running in daemon mod
 with JSON-RPC over a UNIX socket:
 
 ```bash
-signal-cli -u +1YOURNUMBER daemon --socket ~/.local/run/signal-cli/socket
+signal-cli -u +15555550100 daemon --socket ~/.local/run/signal-cli/socket
 ```
+
+`+15555550100` stands in for the bot's own account.
 
 Config:
 
 ```json
 "signal": {"enabled": true, "socket": "~/.local/run/signal-cli/socket",
-           "account": "+1YOURNUMBER"}
+           "account": "+15555550100"}
 ```
 
-Set `bot.allowed_senders` to your sender UUIDs — otherwise anyone who gets your
-number can talk to your bot.
+`bot.allowed_senders` is required. An empty list rejects every incoming message.
+Each entry is compared to the envelope's `sourceNumber` (E.164 phone number),
+`sourceUuid` (account UUID), or the legacy `source` field. Put the phone number,
+the UUID, or both. The same list is shared with Telegram, where the entries are
+numeric user ids, so a Signal-only number will not admit a Telegram user.
 
 ## Telegram (Bot API, long polling)
 
@@ -31,11 +36,14 @@ number can talk to your bot.
 
 ## HTTP API (OpenAI-compatible)
 
-Always-on JSON brain for Home Assistant (`openai_conversation`), scripts, or custom
-UIs: `POST http://host:8082/v1/chat/completions` with `Authorization: Bearer <token>`
-and an OpenAI-style messages array. History: send the recent exchanges as messages —
-the engine treats the last four as context (that's what powers "what is her email"
-follow-ups).
+Off unless `transports.api.enabled` is true. It listens on `127.0.0.1` and
+`transports.api.port` (default 8082). Startup refuses an empty token or the
+placeholder `change-me`.
+
+`POST /v1/chat/completions` with `Authorization: Bearer <token>` and an
+OpenAI-style `messages` array. A missing or wrong token is 401. The last message
+is the turn; up to three earlier messages in that request are the context for
+follow-ups such as "what is her email".
 
 ## Attachments
 

@@ -7,6 +7,21 @@ import threading
 import time
 
 
+def sender_id(envelope, allowed):
+    """Return the allowlisted id to reply to, or None.
+
+    signal-cli puts the sender on the envelope. Match sourceNumber (E.164),
+    sourceUuid, or the legacy source field. An empty allowlist matches nothing.
+    """
+    if not allowed:
+        return None
+    for key in ("sourceNumber", "sourceUuid", "source"):
+        val = str((envelope or {}).get(key) or "").strip()
+        if val and val in allowed:
+            return val
+    return None
+
+
 class SignalTransport:
     push = True   # can proactively message the owner (reminders, alerts)
 
@@ -19,7 +34,9 @@ class SignalTransport:
         self.allowed = set(cfg["bot"].get("allowed_senders") or [])
         if not self.allowed:
             print("[signal] SECURITY: bot.allowed_senders is empty - ALL incoming "
-                  "messages will be rejected. Add your sender id/UUID to config.")
+                  "messages will be rejected. Add the sender's phone number "
+                  "(sourceNumber) or UUID (sourceUuid). A legacy envelope "
+                  "source value is accepted too.")
         self.sockfile = self.sock = None
 
     def _connect(self):
@@ -59,9 +76,9 @@ class SignalTransport:
                         continue
                     envelope = msg.get("params", {}).get("envelope") or {}
                     dm = envelope.get("dataMessage") or {}
-                    # signal-cli puts the sender on the ENVELOPE, not the dataMessage
-                    sender = envelope.get("source") or ""
-                    if not self.allowed or sender not in self.allowed:
+                    # sourceNumber / sourceUuid, with legacy source as a fallback
+                    sender = sender_id(envelope, self.allowed)
+                    if not sender:
                         continue
                     text = dm.get("message") or ""
                     att_path = None
