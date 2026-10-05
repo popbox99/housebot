@@ -4,8 +4,8 @@ Weather uses Open-Meteo (no API key). Web search uses a self-hosted SearXNG
 instance (config skills.searxng.base_url) — results are URLs + titles for the
 LLM or the user.
 
-read_url is SSRF-hardened: https only, and hostnames resolving to private,
-loopback, link-local or reserved addresses are refused.
+read_url is SSRF-hardened: https only, public addresses only (including the
+CGNAT range 100.64.0.0/10), and every redirect hop is checked the same way.
 """
 
 import ipaddress
@@ -14,6 +14,49 @@ import re
 import socket
 import urllib.parse
 import urllib.request
+
+# Tailscale and other CGNAT space. ipaddress on Python 3.12 does not mark
+# this range private, reserved, or link-local.
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")
+
+
+class _Blocked(Exception):
+    """URL failed the public-https check."""
+
+
+class _TooManyRedirects(Exception):
+    pass
+
+
+class _Redirect(Exception):
+    def __init__(self, url):
+        self.url = url
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Surface the next Location instead of following it blindly."""
+
+    def http_error_302(self, req, fp, code, msg, headers):
+        loc = headers.get("Location") or headers.get("URI")
+        try:
+            fp.read()
+        except Exception:
+            pass
+        fp.close()
+        if not loc:
+            return
+        raise _Redirect(urllib.parse.urljoin(req.full_url, loc))
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
+
+
+def _blocked_ip(ip):
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT:
+        return True
+    return (ip.is_private or ip.is_loopback or ip.is_link_local
+            or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
 
 
 class Web:
@@ -77,9 +120,13 @@ class Web:
         return "Search results:\n" + "\n".join(
             f"  • {r['title']} — {r['url']}" for r in results)
 
+    def _opener(self):
+        return urllib.request.build_opener(_NoRedirect)
+
     def _safe_url(self, url):
-        """https-only, and refuse hosts that resolve to private/reserved space.
-        (Best-effort SSRF guard: TOCTOU DNS rebinding is out of scope here.)"""
+        """https-only, and refuse hosts that resolve to private/reserved/CGNAT space.
+        (Best-effort: DNS is checked again on every redirect, but a rebind
+        between check and connect is still possible.)"""
         try:
             parts = urllib.parse.urlsplit(url)
         except Exception:
@@ -90,25 +137,44 @@ class Web:
             infos = socket.getaddrinfo(parts.hostname, 443)
         except Exception:
             return None
+        if not infos:
+            return None
         for info in infos:
             try:
                 ip = ipaddress.ip_address(info[4][0])
             except ValueError:
                 return None
-            if (ip.is_private or ip.is_loopback or ip.is_link_local
-                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            if _blocked_ip(ip):
                 return None
         return url
 
+    def _fetch_public(self, url, max_redirects=5):
+        """GET url, re-checking _safe_url on every redirect hop."""
+        opener = self._opener()
+        current = url
+        for hop in range(max_redirects + 1):
+            safe = self._safe_url(current)
+            if not safe:
+                raise _Blocked()
+            req = urllib.request.Request(safe, headers={"User-Agent": "housebot"})
+            try:
+                with opener.open(req, timeout=30) as resp:
+                    return resp.read()
+            except _Redirect as redir:
+                if hop == max_redirects:
+                    raise _TooManyRedirects()
+                current = redir.url
+        raise _TooManyRedirects()
+
     def read_url(self, url, summarize_fn):
         """Fetch a URL's text and summarize via the LLM."""
-        url = self._safe_url(url)
-        if not url:
-            return "I can only fetch https:// pages on public hosts."
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "housebot"})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                html = r.read().decode("utf-8", errors="replace")
+            raw = self._fetch_public(url)
+            html = raw.decode("utf-8", errors="replace")
+        except _Blocked:
+            return "I can only fetch https:// pages on public hosts."
+        except _TooManyRedirects:
+            return "Too many redirects."
         except Exception as e:
             return f"Couldn't fetch {url}: {e}"
         text = re.sub(r"<script.*?</script>|<style.*?</style>", " ", html,

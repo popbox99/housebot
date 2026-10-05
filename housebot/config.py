@@ -11,7 +11,7 @@ DEFAULTS = {
     "bot": {
         "name": "house",
         "data_dir": "~/.local/share/housebot",
-        "allowed_senders": [],          # empty = accept all (not recommended)
+        "allowed_senders": [],          # empty = reject every Signal and Telegram sender
     },
     "llm": {
         # Fallback chain: first reachable backend wins. api: "ollama" | "openai"
@@ -34,7 +34,8 @@ DEFAULTS = {
         "signal": {"enabled": False, "socket": "~/.local/run/signal-cli/socket",
                     "account": ""},
         "telegram": {"enabled": False, "token": "", "token_file": ""},
-        "api": {"enabled": True, "port": 8082, "token": "change-me"}
+        # Off until a real token is set. Enabled + "change-me" refuses to start.
+        "api": {"enabled": False, "port": 8082, "token": ""}
     },
     "skills": {
         "contacts_json": "",            # enables contacts skill (house-contacts)

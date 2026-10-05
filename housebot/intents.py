@@ -60,6 +60,14 @@ def keyword_intent(t):
             and re.search(r"\b(phone|mobile|cell|number|e-?mail|address|contact info)\b", t)) \
             or re.search(r"[\w]'?(?:s)?\s+(?:phone|cell|mobile|number|e-?mail|address)\b", t):
         return "CONTACT_INFO", t[:120]
+    # Before TASK: any sentence containing "task" would otherwise be a new task,
+    # including "mark the task … done".
+    if re.search(r"\b(?:mark|check off|complete[d]?)\b", t) and re.search(r"\btask\b", t):
+        arg = re.sub(
+            r"^(?:please\s+)?(?:mark|check off|complete[d]?)\s+(?:the\s+)?(?:task\s+)?",
+            "", t, count=1, flags=re.I)
+        arg = re.sub(r"\s+\b(?:as\s+)?(?:done|complete[d]?)\b\s*$", "", arg, flags=re.I)
+        return "COMPLETE", arg.strip()[:80]
     if re.search(r"\b(tasks?|todos?|to-dos?|remind me to)\b", t):
         return "TASK", re.sub(r"\b(tasks?|todos?|to-dos?|add|create|remind me to|remind me|it)\b",
                               "", t).strip()[:100]
@@ -110,8 +118,6 @@ def keyword_intent(t):
         return "BATTERIES", ""
     if re.search(r"\bvacuum\b", t) and re.search(r"\b(start|stop|dock|status|clean)\b", t):
         return "VACUUM", re.sub(r"\b(the|vacuum)\b", "", t, flags=re.I).strip()[:40]
-    if re.search(r"\b(?:mark|check off|complete[d]?)\b", t) and re.search(r"\btask\b", t):
-        return "COMPLETE", re.sub(r"\b(?:mark|check off|complete[d]?)\s+(?:the\s+)?(?:task\s+)?", "", t, flags=re.I).strip()[:80]
     return None, None
 
 
@@ -122,9 +128,13 @@ def classify_llm(chat, t, history=None):
                                 history=history, temperature=0)
     if not out:
         return "CHAT", ""
-    m = re.search(r"\b(FIND|CHAT|WEATHER|SEARCH_WEB|SUMMARIZE|EVENT|TASK|AGENDA|REMIND|"
-                  r"NOTE|CONTACT|CONTACT_INFO|REMINDERS|COMPLETE)\b\s*[:]?(.*)$",
-                  out[:120], re.S)
+    line = out.strip().splitlines()[0]
+    m = re.search(
+        r"\b(FIND|CHAT|WEATHER|SEARCH_WEB|SUMMARIZE|READ_URL|EVENT|TASK|AGENDA|"
+        r"REMIND|NOTE|CONTACT|CONTACT_INFO|REMINDERS|COMPLETE|LOCATION|SHOPPING|"
+        r"CHORE|HABIT|REMEMBER|FORGET|MEMORY|HID|PHOTOS|PAPERLESS|BATTERIES|"
+        r"VACUUM)\b\s*[:]?(.*)$",
+        line)
     if not m:
         return "CHAT", ""
     return m.group(1), m.group(2).strip()[:150]

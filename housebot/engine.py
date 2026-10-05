@@ -32,7 +32,8 @@ class Engine:
         self.calendar = None
         if cfg["caldav"].get("base_url"):
             from .skills.calendar import Calendar
-            self.calendar = Calendar(cfg)
+            # llm_extract_when unpacks (text, backend_name)
+            self.calendar = Calendar(cfg, lambda p: (self.chat.extract(p), None))
 
         self.contacts = Contacts(cfg)
 
