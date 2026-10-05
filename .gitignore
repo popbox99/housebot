@@ -1,0 +1,12 @@
+# personal data — never commit
+config.json
+contacts.json
+*.vcf
+*.sqlite
+reminders.json
+*_password*
+*token*
+
+__pycache__/
+*.pyc
+.venv/

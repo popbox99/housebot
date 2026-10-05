@@ -1,0 +1,46 @@
+{
+  "bot": {
+    "name": "house",
+    "data_dir": "~/.local/share/housebot",
+    "owner": "+15550100",
+    "allowed_senders": ["+15550100"]
+  },
+  "llm": {
+    "backends": [
+      {"name": "gpu-box", "base_url": "http://192.168.1.50:11434", "model": "qwen3:8b", "api": "ollama"},
+      {"name": "mini-server", "base_url": "http://192.168.1.60:11434", "model": "qwen3:4b-instruct", "api": "ollama"},
+      {"name": "local", "base_url": "http://127.0.0.1:11434", "model": "llama3.2:3b", "api": "ollama"}
+    ]
+  },
+  "caldav": {
+    "base_url": "http://127.0.0.1:5232",
+    "user": "me",
+    "password_file": "~/.config/housebot/caldav_password",
+    "calendar": "calendar",
+    "tasks": "tasks",
+    "tz": "America/New_York"
+  },
+  "transports": {
+    "signal": {"enabled": false, "socket": "~/.local/run/signal-cli/socket", "account": "+15550100"},
+    "telegram": {"enabled": true, "token_file": "~/.config/housebot/telegram_token"},
+    "api": {"enabled": true, "port": 8082, "token": "change-me"}
+  },
+  "skills": {
+    "contacts_json": "~/.local/share/house-contacts/contacts.json",
+    "contact_ledger_vcf": "~/Documents/sync/bot-added.vcf",
+    "notes_dir": "~/Documents/Notes",
+    "search_dirs": ["~/Documents"],
+    "default_place": "",
+    "searxng": {"base_url": "http://127.0.0.1:8888"},
+    "wyoming_stt": {"host": "127.0.0.1", "port": 10300},
+    "immich": {"enabled": false, "base_url": "http://127.0.0.1:2283",
+               "api_key_file": "~/.config/housebot/immich_key", "fallback_url": ""},
+    "paperless": {"enabled": false, "base_url": "http://127.0.0.1:8010",
+                  "token_file": "~/.config/housebot/paperless_token"},
+    "homeassistant": {"enabled": false, "base_url": "http://127.0.0.1:8123",
+                      "token_file": "~/.config/housebot/ha_token",
+                      "person_entity": "person.me", "zones": {"home": "home"}},
+    "watchdog": {"enabled": false, "ntfy_topic": "my-housebot-watchdog",
+                 "checks": [{"name": "webui", "url": "http://127.0.0.1:8080"}]}
+  }
+}
