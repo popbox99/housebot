@@ -199,7 +199,7 @@ The reply is text. Image bytes are not sent back. If Immich errors or is disable
 
 ### Chat
 
-Anything that misses the keywords (and misses the small set of LLM labels) is chat. Example: `tell me a joke`.
+Anything the keywords miss, and that the classifier leaves as chat, is a normal chat reply. Example: `tell me a joke`.
 
 `llm.backends` is tried in order. Each entry has `name`, `base_url`, `model`, and `api` (`ollama` or `openai`). Ollama is `POST {base_url}/api/chat`. OpenAI-compatible is `POST {base_url}/v1/chat/completions`. Timeout is 120 seconds. With two or more backends, the reply ends with a `[name]` tag of whichever one answered. If every backend fails: `No LLM backend reachable - check your config's llm.backends.`
 
@@ -214,7 +214,7 @@ Enable each one under `transports.<name>.enabled`. `python3 -m housebot` starts 
 `bot.allowed_senders` is **one list** shared by Signal and Telegram. The HTTP API does not read it.
 
 - An empty list rejects every Signal message and every Telegram message. Both transports print a warning at startup.
-- Signal compares the list to `envelope.source` only.
+- Signal compares the list to `sourceNumber`, `sourceUuid`, or the legacy `source` field.
 - Telegram compares the list to the sender's numeric user id, as a string.
 - A list that only contains `+15555550100` can admit that Signal phone number and will reject every Telegram user. A list that only contains `"123456789"` does the reverse. Put both kinds of id in the list when both transports are on.
 
