@@ -7,6 +7,7 @@ reminders.json
 location_reminders.json
 memory.json
 watchdog_state.json
+recurring_reminders.json
 
 # secrets — never commit
 *_password*
@@ -17,6 +18,7 @@ ha_token*
 paperless_token*
 .env
 .env*
+!.env.example
 secrets.json
 ADMIN_CREDENTIALS
 *.pem
