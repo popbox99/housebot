@@ -81,6 +81,10 @@ def main():
                 return
 
     cfg = Config()
+    if "--demo" in args or "--public" in args:
+        cfg["bot"]["demo_mode"] = True
+        print("[housebot] PUBLIC DEMO MODE ACTIVE: accepting incoming messages from any user for testing!")
+
     engine = Engine(cfg)
     senders = []
     threads = []

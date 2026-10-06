@@ -558,6 +558,40 @@ def _test_standalone_binary():
 
 check("standalone executable execution", _test_standalone_binary)
 
+def _test_telegram_demo_mode():
+    from housebot.transports.telegram import TelegramTransport
+    demo_cfg = {
+        "bot": {"allowed_senders": [], "demo_mode": True},
+        "transports": {"telegram": {"enabled": True, "token": "dummy-token"}}
+    }
+    tg = TelegramTransport(demo_cfg, engine)
+    if not tg.demo_mode:
+        raise AssertionError("demo_mode flag should be True")
+    # Verify star wildcard also enables demo_mode
+    star_cfg = {
+        "bot": {"allowed_senders": ["*"]},
+        "transports": {"telegram": {"enabled": True, "token": "dummy-token"}}
+    }
+    tg_star = TelegramTransport(star_cfg, engine)
+    if not tg_star.demo_mode:
+        raise AssertionError("star wildcard in allowed_senders should enable demo_mode")
+    return True
+
+check("telegram demo mode for public testers", _test_telegram_demo_mode)
+
+def _test_installer_script_syntax():
+    import subprocess
+    from pathlib import Path
+    sh_path = Path("install.sh")
+    if not sh_path.exists():
+        raise AssertionError("install.sh does not exist")
+    res = subprocess.run(["bash", "-n", str(sh_path)], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise AssertionError(f"install.sh bash syntax error: {res.stderr}")
+    return True
+
+check("1-line installer script syntax", _test_installer_script_syntax)
+
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:
     print(("✓" if ok else "✗") + " " + name + (f"  — {err}" if err else ""))
