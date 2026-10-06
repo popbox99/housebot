@@ -466,6 +466,37 @@ def _test_llm_api_key_header():
 
 check("llm client supports api_key authorization header", _test_llm_api_key_header)
 
+# -- week 2 onboarding & installer test cases --
+
+def _test_detect_vaults():
+    from housebot.wizard import detect_obsidian_vaults
+    vaults = detect_obsidian_vaults()
+    if not isinstance(vaults, list):
+        raise AssertionError("detect_obsidian_vaults should return a list")
+    return True
+
+check("obsidian vault auto-detection", _test_detect_vaults)
+
+def _test_service_paths():
+    from housebot.service import get_service_paths
+    os_type, srv_path = get_service_paths()
+    if os_type not in ("linux", "darwin", "win32", "unknown"):
+        raise AssertionError(f"unexpected os_type: {os_type}")
+    if not str(srv_path):
+        raise AssertionError("service path cannot be empty")
+    return True
+
+check("cross-platform background service paths", _test_service_paths)
+
+def _test_cli_transport():
+    from housebot.transports.cli import CliTransport
+    cli = CliTransport(cfg, engine)
+    if cli.push is not False:
+        raise AssertionError("cli push should be False")
+    return True
+
+check("interactive cli transport initialization", _test_cli_transport)
+
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:
     print(("✓" if ok else "✗") + " " + name + (f"  — {err}" if err else ""))
