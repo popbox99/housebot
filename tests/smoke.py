@@ -497,6 +497,67 @@ def _test_cli_transport():
 
 check("interactive cli transport initialization", _test_cli_transport)
 
+def _test_webui_server():
+    from housebot.webui import find_available_port, WebUIServer
+    import urllib.request
+    import json
+
+    test_port = find_available_port(47500)
+    server = WebUIServer("127.0.0.1", test_port, cfg=cfg, engine=engine)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+
+    try:
+        # 1. GET /
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/", timeout=3) as r:
+            if r.status != 200:
+                raise AssertionError(f"GET / failed with status {r.status}")
+            html = r.read().decode("utf-8")
+            if "HouseBot" not in html or "Dashboard" not in html:
+                raise AssertionError("Dashboard HTML missing expected title")
+
+        # 2. GET /api/status
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/status", timeout=3) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            if "configured" not in data or "version" not in data:
+                raise AssertionError("status API missing fields")
+
+        # 3. GET /api/hardware
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/hardware", timeout=3) as r:
+            hw_data = json.loads(r.read().decode("utf-8"))
+            if "profile" not in hw_data or "recommendation" not in hw_data:
+                raise AssertionError("hardware API missing fields")
+
+        # 4. POST /api/chat
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/chat",
+            data=json.dumps({"message": "whats on my shopping list"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            chat_data = json.loads(r.read().decode("utf-8"))
+            if "reply" not in chat_data:
+                raise AssertionError("chat API missing reply field")
+    finally:
+        server.shutdown()
+        server.server_close()
+    return True
+
+check("webui server and rest endpoints", _test_webui_server)
+
+def _test_standalone_binary():
+    import subprocess
+    from pathlib import Path
+    bin_path = Path("dist") / "HouseBot"
+    if not bin_path.exists():
+        raise AssertionError(f"dist/HouseBot binary does not exist at {bin_path}")
+    res = subprocess.run([str(bin_path), "--hardware"], capture_output=True, text=True, timeout=10)
+    if res.returncode != 0 or "Hardware Profile" not in res.stdout:
+        raise AssertionError(f"Binary execution failed: {res.stderr or res.stdout}")
+    return True
+
+check("standalone executable execution", _test_standalone_binary)
+
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:
     print(("✓" if ok else "✗") + " " + name + (f"  — {err}" if err else ""))

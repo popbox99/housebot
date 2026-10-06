@@ -20,6 +20,19 @@ def main():
         run_wizard()
         return
 
+    if "--web-setup" in args:
+        from .webui import start_webui
+        print("Starting HouseBot Web Setup Wizard...")
+        start_webui(open_browser=True, in_background=False)
+        return
+
+    if "--web" in args:
+        cfg = Config()
+        engine = Engine(cfg)
+        from .webui import start_webui
+        start_webui(cfg=cfg, engine=engine, open_browser=True, in_background=False)
+        return
+
     if "--hardware" in args:
         from .hardware import inspect_hardware, recommend_model
         hw = inspect_hardware()
@@ -44,14 +57,28 @@ def main():
     if not os.path.exists(DEFAULT_CONFIG_PATH) and "--no-wizard" not in args:
         if sys.stdin.isatty():
             print(f"No configuration file found at {DEFAULT_CONFIG_PATH}.")
-            launch = input("Would you like to run the setup wizard now? (Y/n): ").strip().lower()
-            if launch in ("", "y", "yes"):
+            print("1. Launch Browser Web Setup (Recommended)")
+            print("2. Run Terminal CLI Setup")
+            print("3. Skip setup (continue with defaults)")
+            choice = input("Select an option [1]: ").strip()
+            if choice in ("", "1"):
+                from .webui import start_webui
+                print("Opening HouseBot Web Setup in your browser...")
+                start_webui(open_browser=True, in_background=False)
+                if not os.path.exists(DEFAULT_CONFIG_PATH):
+                    return
+            elif choice == "2":
                 from .wizard import run_wizard
                 run_wizard()
                 if not os.path.exists(DEFAULT_CONFIG_PATH):
                     return
         else:
-            print(f"[housebot] No config at {DEFAULT_CONFIG_PATH}; continuing with defaults.")
+            # Launched without an interactive TTY (e.g. GUI double-click)
+            from .webui import start_webui
+            print("[housebot] No config found. Launching Web Setup in browser...")
+            start_webui(open_browser=True, in_background=False)
+            if not os.path.exists(DEFAULT_CONFIG_PATH):
+                return
 
     cfg = Config()
     engine = Engine(cfg)

@@ -74,6 +74,9 @@ def detect_obsidian_vaults() -> List[Path]:
     return vaults
 
 
+find_obsidian_vaults = detect_obsidian_vaults
+
+
 def run_storage_setup() -> str:
     """Guide the user through picking an Obsidian vault or standard notes folder."""
     print("\n--- [Step 1/4] Storage & Notes Directory ---")
@@ -111,6 +114,25 @@ def run_storage_setup() -> str:
     return str(target_path), (st_idx == 0)
 
 
+def validate_telegram_token(token: str) -> Tuple[bool, dict]:
+    """Validate a Telegram bot token via the getMe API endpoint."""
+    if not token or ":" not in token:
+        return False, {"error": "Invalid token format"}
+    try:
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/getMe")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            res = json.loads(r.read())
+            if res.get("ok"):
+                result = res.get("result", {})
+                return True, {
+                    "bot_username": result.get("username", ""),
+                    "first_name": result.get("first_name", ""),
+                }
+            return False, {"error": res.get("description", "Unknown error")}
+    except Exception as e:
+        return False, {"error": str(e)}
+
+
 def run_transport_setup() -> Tuple[dict, List[str], str, dict]:
     """Guide the user through choosing and verifying their messaging platform."""
     print("\n--- [Step 2/4] Messaging Platform ---")
@@ -136,16 +158,12 @@ def run_transport_setup() -> Tuple[dict, List[str], str, dict]:
         token = input("  3. Paste your Bot Token: ").strip()
 
         print("Testing Telegram Bot Token...")
-        bot_username = ""
-        try:
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/getMe")
-            with urllib.request.urlopen(req, timeout=10) as r:
-                res = json.loads(r.read())
-                if res.get("ok"):
-                    bot_username = res["result"].get("username", "your bot")
-                    print(f"✓ Connected successfully to @{bot_username}!")
-        except Exception as e:
-            print(f"⚠️ Could not verify token online ({e}). Continuing with entered token.")
+        ok, res = validate_telegram_token(token)
+        bot_username = res.get("bot_username", "")
+        if ok:
+            print(f"✓ Connected successfully to @{bot_username}!")
+        else:
+            print(f"⚠️ Could not verify token online ({res.get('error')}). Continuing with entered token.")
 
         print(f"\nNow send any message (e.g. 'hello') to @{bot_username or 'your bot'} on Telegram.")
         input("Press Enter once you have sent the message to auto-detect your User ID... ")

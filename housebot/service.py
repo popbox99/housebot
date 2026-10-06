@@ -31,6 +31,12 @@ def get_service_paths() -> Tuple[str, Path]:
     return "unknown", home / "housebot.service"
 
 
+def is_service_installed() -> bool:
+    """Return True if the background service file exists on this system."""
+    _, srv_path = get_service_paths()
+    return srv_path.exists()
+
+
 def install_service(python_exec: str = None, repo_dir: Path = None) -> Tuple[bool, str]:
     """Install and enable HouseBot as a persistent background service."""
     python_bin = python_exec or sys.executable
