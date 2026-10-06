@@ -13,6 +13,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Force UTF-8 encoding on Windows to prevent cp1252 charmap encode errors
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def get_binary_name() -> str:
     system = platform.system().lower()
@@ -31,7 +43,7 @@ def build_executable(dist_dir: Path = None, onefile: bool = True) -> Path:
     target_binary = dist_path / binary_name
 
     print("=" * 65)
-    print("        🚀 HouseBot Standalone Executable Builder")
+    print("        [+] HouseBot Standalone Executable Builder")
     print("=" * 65)
     print(f"Target OS:       {platform.system()} ({platform.machine()})")
     print(f"Output Binary:   {target_binary}")
@@ -50,7 +62,7 @@ def build_executable(dist_dir: Path = None, onefile: bool = True) -> Path:
             pyinstaller_bin = str(venv_pyinstaller_win)
 
     if not pyinstaller_bin:
-        print("\n❌ PyInstaller is not installed in this environment.")
+        print("\n[-] PyInstaller is not installed in this environment.")
         print("To install it, run:")
         print("    pip install pyinstaller>=6.0")
         print("or:")
@@ -97,16 +109,16 @@ def build_executable(dist_dir: Path = None, onefile: bool = True) -> Path:
     print("\nRunning PyInstaller build process...")
     res = subprocess.run(cmd, cwd=str(repo_root))
     if res.returncode != 0:
-        print(f"\n❌ Build failed with returncode {res.returncode}")
+        print(f"\n[-] Build failed with returncode {res.returncode}")
         sys.exit(res.returncode)
 
     if not target_binary.exists():
-        print(f"\n❌ Expected output binary not found at {target_binary}")
+        print(f"\n[-] Expected output binary not found at {target_binary}")
         sys.exit(1)
 
     size_mb = target_binary.stat().st_size / (1024 * 1024)
     print("\n" + "=" * 65)
-    print(f"🎉 Build SUCCESSFUL!")
+    print(f"[*] Build SUCCESSFUL!")
     print(f"Binary created: {target_binary}")
     print(f"Binary size:    {size_mb:.1f} MB")
     print("=" * 65)
@@ -121,11 +133,11 @@ def build_executable(dist_dir: Path = None, onefile: bool = True) -> Path:
             timeout=10,
         )
         if smoke_res.returncode == 0 and "Hardware Profile" in smoke_res.stdout:
-            print("✓ Binary smoke check passed: --hardware output confirmed!")
+            print("[+] Binary smoke check passed: --hardware output confirmed!")
         else:
-            print(f"⚠️ Binary executed but output was unexpected:\n{smoke_res.stdout}\n{smoke_res.stderr}")
+            print(f"[!] Binary executed but output was unexpected:\n{smoke_res.stdout}\n{smoke_res.stderr}")
     except Exception as e:
-        print(f"⚠️ Smoke check skipped/failed: {e}")
+        print(f"[!] Smoke check skipped/failed: {e}")
 
     print("\nNext steps to distribute to testers:")
     print(f"1. Copy '{target_binary.name}' to a shared folder or Google Drive/Dropbox.")
