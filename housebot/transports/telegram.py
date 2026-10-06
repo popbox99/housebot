@@ -15,15 +15,20 @@ class TelegramTransport:
         self.token = t.get("token") or ""
         tf = t.get("token_file")
         if tf and os.path.exists(os.path.expanduser(tf)):
-            self.token = open(os.path.expanduser(tf)).read().strip()
+            with open(os.path.expanduser(tf), "r", encoding="utf-8") as f:
+                self.token = f.read().strip()
         self.base = f"https://api.telegram.org/bot{self.token}"
         self.allowed = set(cfg["bot"].get("allowed_senders") or [])
-        if not self.allowed:
+        if not self.token:
+            print("[telegram] WARNING: No token configured for Telegram transport.")
+        elif not self.allowed:
             print("[telegram] SECURITY: bot.allowed_senders is empty - ALL incoming "
                   "messages will be rejected. Add your numeric Telegram user id.")
         self.offset = 0
 
-    def send(self, chat_id, text):
+    def send(self, chat_id, text, attachment=None):
+        if not self.token:
+            return
         req = urllib.request.Request(
             f"{self.base}/sendMessage",
             data=json.dumps({"chat_id": chat_id, "text": text}).encode(),
@@ -32,6 +37,9 @@ class TelegramTransport:
             r.read()
 
     def serve_forever(self):
+        if not self.token:
+            print("[telegram] transport inactive (no token).")
+            return
         while True:
             try:
                 url = f"{self.base}/getUpdates?timeout=50&offset={self.offset}"

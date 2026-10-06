@@ -21,18 +21,24 @@ class Jobs:
             pass
 
     def _alert_all(self, text):
+        if not self.senders:
+            return False
+        sent = False
         for s in self.senders:
             try:
                 s.send(self.owner, text)
+                sent = True
             except Exception as e:
                 print("[jobs] send failed:", e)
+        return sent
 
     def _tick(self):
         last_watchdog = 0.0
         while True:
             try:
-                for _id, what, when in self.engine.reminders.due():
-                    self._alert_all("⏰ Reminder: " + what)
+                for rem_id, what, when in self.engine.reminders.due():
+                    if self._alert_all("⏰ Reminder: " + what):
+                        self.engine.reminders.mark_sent(rem_id)
             except Exception as e:
                 print("[jobs] reminder error:", e)
             try:

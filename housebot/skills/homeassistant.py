@@ -7,6 +7,7 @@ and fire when it enters the target zone.
 
 import json
 import os
+import re
 import time
 import urllib.request
 
@@ -24,7 +25,8 @@ class HomeAssistant:
 
     def _read_token(self, path):
         if path and os.path.exists(os.path.expanduser(path)):
-            return open(os.path.expanduser(path)).read().strip()
+            with open(os.path.expanduser(path), "r", encoding="utf-8") as f:
+                return f.read().strip()
         return ""
 
     def _get(self, path):
@@ -49,14 +51,15 @@ class HomeAssistant:
 
     def _load_loc(self):
         try:
-            return json.load(open(self.loc_path))
+            with open(self.loc_path, "r", encoding="utf-8") as f:
+                return json.load(f)
         except Exception:
             return []
 
     def _save_loc(self, rems):
         tmp = self.loc_path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(rems, f, indent=1)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(rems, f, indent=1, ensure_ascii=False)
         os.replace(tmp, self.loc_path)
 
     def add_location_reminder(self, text):
@@ -70,8 +73,21 @@ class HomeAssistant:
                       text, flags=re.I)
         what = re.sub(r"\bwhen\s+(?:i|we)\s+(?:get|arrive|reach|am|are|come)\b.*$",
                       "", what, flags=re.I).strip() or text[:60]
+        armed_zone = ""
+        try:
+            if self.enabled and self.person_entity:
+                st = self.state(self.person_entity)
+                if isinstance(st, dict):
+                    armed_zone = (st.get("state") or "").lower()
+        except Exception:
+            pass
         rems = self._load_loc()
-        rems.append({"what": what, "zone": zone, "armed": time.strftime("%Y-%m-%d %H:%M")})
+        rems.append({
+            "what": what,
+            "zone": zone,
+            "armed": time.strftime("%Y-%m-%d %H:%M"),
+            "armed_zone": armed_zone
+        })
         self._save_loc(rems)
         return f"📍 Will remind you to {what!r} when you {'get home' if zone == 'home' else f'arrive at {zone}'}."
 
@@ -122,8 +138,6 @@ class HomeAssistant:
         if service is None:
             st = self.state(self.vacuum_entity)
             return f"Vacuum: {st.get('state', 'unknown')}"
-        self.call("vacuum", service)
+        data = {"entity_id": self.vacuum_entity} if self.vacuum_entity else {}
+        self.call("vacuum", service, data)
         return f"Vacuum {action} sent."
-
-
-import re  # noqa: E402  (kept at bottom so the class reads cleanly)

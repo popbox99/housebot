@@ -73,7 +73,7 @@ class Config:
         self.path = path or DEFAULT_CONFIG_PATH
         raw = {}
         if os.path.exists(self.path):
-            with open(self.path) as f:
+            with open(self.path, encoding="utf-8") as f:
                 raw = json.load(f)
         self._data = _merge(DEFAULTS, raw)
         self._expand(self._data)
@@ -83,7 +83,13 @@ class Config:
             for k, v in node.items():
                 if isinstance(v, str) and "~" in v:
                     node[k] = os.path.expanduser(v)
-                elif isinstance(v, dict):
+                elif isinstance(v, (dict, list)):
+                    self._expand(v)
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                if isinstance(v, str) and "~" in v:
+                    node[i] = os.path.expanduser(v)
+                elif isinstance(v, (dict, list)):
                     self._expand(v)
 
     def __getitem__(self, key):
@@ -103,5 +109,6 @@ class Config:
         if cal.get("password"):
             return cal["password"]
         if cal.get("password_file") and os.path.exists(cal["password_file"]):
-            return open(cal["password_file"]).read().strip()
+            with open(cal["password_file"], encoding="utf-8") as f:
+                return f.read().strip()
         return ""

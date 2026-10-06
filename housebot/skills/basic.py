@@ -23,7 +23,7 @@ class Notes:
         while os.path.exists(path):
             path = os.path.join(folder, f"{time.strftime('%Y-%m-%d', now)} {slug} {n}.md")
             n += 1
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(f"# {label} — {stamp}\n\n{text.strip()}\n")
         return f"Noted: {os.path.basename(path)}"
 

@@ -24,7 +24,7 @@ class Engine:
     def __init__(self, cfg):
         self.cfg = cfg
         self.chat = Chat(cfg)
-        self.reminders = Reminders(cfg, lambda p: self.chat.extract(p))
+        self.reminders = Reminders(cfg, lambda p: (self.chat.extract(p), None))
         self.notes = Notes(cfg)
         self.find = Find(cfg)
         self.history = {}
@@ -244,17 +244,17 @@ class Engine:
                                           (text or "").lower())
                 doc_id, ocr = self._paperless.upload(path, title=text or None)
                 if wants_contact and ocr:
-                    return self._contact_add(ocr, text, None)
+                    return self._contact_add(ocr, text, None), None
                 if ocr and not text:
-                    return (f"Saved to Paperless (doc {doc_id}). OCR: "
-                            + ocr[:200] + "...")
-                return f"Saved to Paperless (doc {doc_id})."
-            return "Received the image, but Paperless isn't configured."
+                    return ((f"Saved to Paperless (doc {doc_id}). OCR: "
+                             + ocr[:200] + "..."), None)
+                return f"Saved to Paperless (doc {doc_id}).", None
+            return "Received the image, but Paperless isn't configured.", None
         if ctype in ("pdf", "docx", "doc"):
             if self._paperless:
                 doc_id, _ocr = self._paperless.upload(path, title=text or None)
-                return f"Saved to Paperless (doc {doc_id})." if doc_id else "Paperless upload failed."
-            return "Received the document, but Paperless isn't configured."
+                return (f"Saved to Paperless (doc {doc_id})." if doc_id else "Paperless upload failed."), None
+            return "Received the document, but Paperless isn't configured.", None
         if ctype in ("ogg", "oga", "m4a", "mp3", "wav", "aac"):
             try:
                 from .wyoming import transcribe
@@ -264,11 +264,11 @@ class Engine:
                 text = transcribe(wav, self._stt.get("host", "127.0.0.1"),
                                   int(self._stt.get("port", 10300)))
                 if text:
-                    return self.handle(sender, text)[0]
-                return "The voice note came back empty - try again?"
+                    return self.handle(sender, text)
+                return "The voice note came back empty - try again?", None
             except Exception as e:
-                return f"Voice transcription failed: {e}"
-        return "I got the attachment but don't have a skill for that type yet."
+                return f"Voice transcription failed: {e}", None
+        return "I got the attachment but don't have a skill for that type yet.", None
 
     # -- main entry ----------------------------------------------------------
 
@@ -278,7 +278,7 @@ class Engine:
             return self._handle_attachment(sender, text, attachment)
         if not text or not text.strip():
             return "Send me a message and I'll help.", None
-        hist = self._hist(sender, text)
+        hist = list(self.history.get(sender, []))
         cmd = text.lower().strip()
 
         action, arg = intents.keyword_intent(cmd)
@@ -295,13 +295,18 @@ class Engine:
             enriched, _c, amb = self.contacts.enrich(reply)
             if enriched and enriched != reply and not amb:
                 reply = enriched
+        self._record_turn(sender, text, reply)
         return reply, None
 
-    def _hist(self, sender, text):
+    def _record_turn(self, sender, user_text, bot_reply):
         h = self.history.setdefault(sender, [])
-        h.append({"role": "user", "content": text})
-        h[:] = h[-4:]
-        return h
+        h.append({"role": "user", "content": user_text})
+        if bot_reply:
+            h.append({"role": "assistant", "content": bot_reply})
+        h[:] = h[-8:]
+
+    def _hist(self, sender, text=None):
+        return list(self.history.get(sender, []))
 
 
 # helper: most voice sources are already 16k mono wav; extend here if not

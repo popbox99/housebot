@@ -42,6 +42,8 @@ engine = Engine(cfg)
 # stub the LLM so chat/classify have deterministic answers
 import housebot.llm as llm
 
+_REAL_ASK_LLM = llm.ask_llm
+
 
 def _stub_ask(cfg, prompt, history=None, backend=None, temperature=None):
     if "Classify the user request" in prompt:
@@ -338,6 +340,131 @@ check("signal allowlist fields", lambda: _signal_allowlist())
 check("ssrf blocks cgnat and rechecks redirects", lambda: _ssrf())
 check("caldav base_url does not crash startup", lambda: _caldav_starts())
 check("api auth no/bad/good token", _api_auth)
+
+# -- week 1 refactor test cases --
+
+def _test_attachment_tuple():
+    res = engine.handle("t", "", "/tmp/nonexistent.png")
+    if not isinstance(res, tuple) or len(res) != 2:
+        raise AssertionError(f"expected 2-tuple, got {type(res)}")
+    reply, att = res  # verify unpacking works
+    if not isinstance(reply, str):
+        raise AssertionError(f"expected string reply, got {type(reply)}")
+    return True
+
+check("attachment returns unpackable 2-tuple", _test_attachment_tuple)
+
+def _test_reminder_llm_fallback():
+    from housebot.skills.reminders import Reminders
+    # stub returns a json string (not a tuple)
+    stub_llm = lambda p: '{"when": "2026-10-15 14:00", "what": "inspect roof"}'
+    rem = Reminders(cfg, stub_llm)
+    # text that fails fast_parse_when and triggers llm_extract_when
+    msg = rem.add("remind me when it is sunny outside to inspect roof")
+    if "inspect roof" not in msg or "Oct 15" not in msg:
+        raise AssertionError(f"unexpected reminder confirmation: {msg}")
+    return True
+
+check("reminder llm fallback unpacks cleanly", _test_reminder_llm_fallback)
+
+def _test_caldav_complete_envelope():
+    from housebot.caldav import CalDAV
+    c = CalDAV(cfg)
+    c.get = lambda col: (
+        "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//test//EN\n"
+        "BEGIN:VTODO\nUID:task-123\nSUMMARY:test\nEND:VTODO\n"
+        "END:VCALENDAR"
+    )
+    captured = []
+    c.put = lambda col, fn, body: (captured.append(body) or True)
+    c.complete_vtodo("task-123")
+    if not captured:
+        raise AssertionError("put was not called")
+    body = captured[0]
+    if "BEGIN:VCALENDAR" not in body or "END:VCALENDAR" not in body:
+        raise AssertionError(f"missing VCALENDAR envelope in: {body}")
+    if "STATUS:COMPLETED" not in body:
+        raise AssertionError("missing STATUS:COMPLETED")
+    return True
+
+check("caldav complete_vtodo preserves vcalendar envelope", _test_caldav_complete_envelope)
+
+def _test_config_expand_lists():
+    c = Config()
+    c._data["skills"]["search_dirs"] = ["~/Documents", "~/Downloads"]
+    c._expand(c._data)
+    dirs = c._data["skills"]["search_dirs"]
+    if any(d.startswith("~") for d in dirs):
+        raise AssertionError(f"tilde not expanded in lists: {dirs}")
+    return True
+
+check("config _expand handles string lists", _test_config_expand_lists)
+
+def _test_shopping_order():
+    from housebot.skills.lists import Lists
+    import tempfile
+    test_cfg = Config()
+    test_cfg._data["skills"]["notes_dir"] = tempfile.mkdtemp()
+    l = Lists(test_cfg)
+    l.shopping_add(["first item"])
+    l.shopping_add(["second item"])
+    content = open(l.shopping_note, encoding="utf-8").read()
+    idx1 = content.find("first item")
+    idx2 = content.find("second item")
+    if idx1 == -1 or idx2 == -1 or idx1 >= idx2:
+        raise AssertionError(f"shopping list items not in chronological order:\n{content}")
+    return True
+
+check("shopping list preserves chronological insertion order", _test_shopping_order)
+
+def _test_hardware_module():
+    from housebot.hardware import inspect_hardware, recommend_model
+    hw = inspect_hardware()
+    if hw.total_ram_gb <= 0:
+        raise AssertionError("invalid RAM detected")
+    rec = recommend_model(hw)
+    if "recommended_model" not in rec or "tier" not in rec:
+        raise AssertionError(f"invalid recommendation: {rec}")
+    return True
+
+check("hardware detection and llm recommendation", _test_hardware_module)
+
+def _test_llm_api_key_header():
+    import housebot.llm as llm
+    test_cfg = {
+        "llm": {
+            "backends": [{
+                "name": "test-cloud",
+                "base_url": "http://127.0.0.1:9999",
+                "api": "openai",
+                "model": "test-model",
+                "api_key": "secret-test-key",
+                "timeout": 1
+            }]
+        }
+    }
+    # Intercept urllib to verify request headers
+    captured_reqs = []
+    real_urlopen = urllib.request.urlopen
+    def _mock_urlopen(req, **k):
+        captured_reqs.append(req)
+        class _Resp:
+            def read(self):
+                return b'{"choices": [{"message": {"content": "ok"}}]}'
+        return _Resp()
+    urllib.request.urlopen = _mock_urlopen
+    try:
+        reply, name = _REAL_ASK_LLM(test_cfg, "hello")
+        if not captured_reqs:
+            raise AssertionError("urlopen not called")
+        auth_header = captured_reqs[0].headers.get("Authorization")
+        if auth_header != "Bearer secret-test-key":
+            raise AssertionError(f"unexpected auth header: {auth_header}")
+    finally:
+        urllib.request.urlopen = real_urlopen
+    return True
+
+check("llm client supports api_key authorization header", _test_llm_api_key_header)
 
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:

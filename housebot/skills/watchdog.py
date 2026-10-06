@@ -48,13 +48,14 @@ class Watchdog:
 
     def _load_state(self):
         try:
-            return set(json.load(open(self.state_path)))
+            with open(self.state_path, "r", encoding="utf-8") as f:
+                return set(json.load(f))
         except Exception:
             return set()
 
     def _save_state(self, failing):
         tmp = self.state_path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(sorted(failing), f)
         os.replace(tmp, self.state_path)
 
