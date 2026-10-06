@@ -108,10 +108,10 @@ def run_storage_setup() -> str:
     target_path = Path(chosen_dir)
     target_path.mkdir(parents=True, exist_ok=True)
     print(f"✓ Notes directory set to: {target_path}")
-    return str(target_path)
+    return str(target_path), (st_idx == 0)
 
 
-def run_transport_setup() -> Tuple[dict, List[str], str]:
+def run_transport_setup() -> Tuple[dict, List[str], str, dict]:
     """Guide the user through choosing and verifying their messaging platform."""
     print("\n--- [Step 2/4] Messaging Platform ---")
     options = [
@@ -174,6 +174,7 @@ def run_transport_setup() -> Tuple[dict, List[str], str]:
             owner = detected_user_id
 
         transports["telegram"] = {"enabled": True, "token": token}
+        meta = {"platform": "telegram", "bot_username": bot_username}
 
     elif t_idx == 1:  # Signal
         account = input("Enter the Signal phone number registered with signal-cli (e.g. +15555550100): ").strip()
@@ -185,11 +186,13 @@ def run_transport_setup() -> Tuple[dict, List[str], str]:
         if user_num:
             allowed_senders.append(user_num)
             owner = user_num
+        meta = {"platform": "signal", "account": account}
 
     elif t_idx == 2:  # CLI
         print("✓ Interactive CLI mode configured. You can chat with HouseBot directly in your terminal.")
+        meta = {"platform": "cli"}
 
-    return transports, allowed_senders, owner
+    return transports, allowed_senders, owner, meta
 
 
 def run_llm_setup() -> List[dict]:
@@ -318,6 +321,70 @@ def run_llm_setup() -> List[dict]:
     return backends
 
 
+def run_phone_guide(transport_meta: dict, is_obsidian: bool):
+    """Walk the user through the exact mobile apps they need on their phone."""
+    print("\n--- [Step 5/5] Mobile Phone Companion Apps ---")
+    p_options = [
+        "iPhone / iPad (iOS)",
+        "Android",
+        "Skip mobile guide (Desktop only)",
+    ]
+    p_idx = prompt_choice("What mobile device will you use to talk with HouseBot?", p_options)
+    if p_idx == 2:
+        return
+
+    is_ios = (p_idx == 0)
+    device_label = "iPhone" if is_ios else "Android"
+    print(f"\n📱 Recommended Apps for your {device_label}:")
+    print("=" * 60)
+
+    platform_name = transport_meta.get("platform", "telegram")
+    if platform_name == "telegram":
+        bot_user = transport_meta.get("bot_username")
+        print("1. Primary Chat App: Telegram Messenger")
+        if is_ios:
+            print("   • Download Telegram from the App Store.")
+        else:
+            print("   • Download Telegram from Google Play Store or F-Droid.")
+        if bot_user:
+            print(f"   • Tap here to message your bot: https://t.me/{bot_user}")
+        print("   • Tap 'START' and send 'whats on my shopping list' or 'remind me in 10 minutes' to test!")
+
+    elif platform_name == "signal":
+        print("1. Primary Chat App: Signal Private Messenger")
+        print("   • Download Signal from the App Store / Google Play.")
+        print(f"   • Send a message to your bot's registered phone number ({transport_meta.get('account', '')}).")
+
+    elif platform_name == "cli":
+        print("1. Chat Interface:")
+        print("   • You chose Terminal CLI mode. You can interact directly from your computer.")
+
+    # Notes & Lists
+    if is_obsidian:
+        print("\n2. Notes & Lists (Obsidian Vault):")
+        print("   • Download the Obsidian Mobile App (App Store / Google Play).")
+        if is_ios:
+            print("   • If using iCloud, place your vault in iCloud Drive to view live edits on your iPhone.")
+        else:
+            print("   • You can sync your vault folder to Android using Syncthing or Obsidian Sync.")
+        print("   • Note: You don't even need the mobile app open—texting the bot updates your files automatically!")
+    else:
+        print("\n2. Notes & Shopping Lists:")
+        print("   • No mobile app required! Just text 'add milk to shopping list' and HouseBot")
+        print("     will update your desktop notes automatically.")
+
+    # Calendar & Reminders (CalDAV)
+    print("\n3. Calendar & Tasks Sync (Optional CalDAV):")
+    if is_ios:
+        print("   • Calendar: Syncs natively! Go to Settings -> Calendar -> Accounts -> Add Account -> Other -> Add CalDAV Account.")
+        print("   • Tasks: Apple Reminders ignores CalDAV, but you can use any CalDAV task app from the App Store.")
+    else:
+        print("   • Sync Engine: Install 'DAVx⁵' (available on F-Droid and Google Play).")
+        print("   • Tasks: Install 'Tasks.org' (open source, connects directly to DAVx⁵).")
+        print("   • Calendar: Use native Google Calendar or 'Fossify Calendar'.")
+    print("=" * 60)
+
+
 def run_wizard(config_path: Path = None):
     """Run the complete onboarding wizard and write the configuration file."""
     print("=" * 65)
@@ -330,8 +397,8 @@ def run_wizard(config_path: Path = None):
     ))
 
     # Run setup steps
-    notes_dir = run_storage_setup()
-    transports, allowed_senders, owner = run_transport_setup()
+    notes_dir, is_obsidian = run_storage_setup()
+    transports, allowed_senders, owner, meta = run_transport_setup()
     backends = run_llm_setup()
 
     # Build finalized config dict
@@ -367,7 +434,7 @@ def run_wizard(config_path: Path = None):
     print(f"✓ Configuration successfully saved to: {target_cfg}")
 
     # Step 4: Background Service Installation
-    print("\n--- [Step 4/4] Always-On Background Service ---")
+    print("\n--- [Step 4/5] Always-On Background Service ---")
     srv_choice = input("Would you like HouseBot to start automatically in the background on system boot? (Y/n): ").strip().lower()
     if srv_choice in ("", "y", "yes"):
         ok, msg = install_service()
@@ -375,6 +442,9 @@ def run_wizard(config_path: Path = None):
             print(f"✓ {msg}")
         else:
             print(f"⚠️ {msg}")
+
+    # Step 5: Mobile Phone Companion Guide
+    run_phone_guide(meta, is_obsidian)
 
     print("\n🎉 Setup complete! You can start HouseBot at any time with:")
     print("     python3 -m housebot\n")
