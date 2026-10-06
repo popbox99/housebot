@@ -420,6 +420,17 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         <div class="card-title">⚙️ Interactive Setup & Configuration</div>
         <div class="card-desc">Configure your storage, local AI brain, and messaging apps.</div>
 
+        <!-- Quick Setup Tip: Install Telegram First -->
+        <div style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(59, 130, 246, 0.08)); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; display: flex; gap: 14px; align-items: center;">
+          <div style="font-size: 28px; line-height: 1;">📱</div>
+          <div style="flex: 1; font-size: 13.5px; line-height: 1.5;">
+            <b style="color: #60a5fa; font-size: 14px;">💡 Pro-Tip: Install Telegram on your phone or PC before starting!</b><br>
+            If you have Telegram open, getting your free bot token takes only 30 seconds by tapping 
+            <a href="https://t.me/BotFather" target="_blank" style="color: #93c5fd; text-decoration: underline; font-weight: 600;">@BotFather</a>.<br>
+            <span style="color: var(--text-muted);">Don't have Telegram yet? <a href="https://telegram.org" target="_blank" style="color: #93c5fd; text-decoration: underline;">Download Telegram</a> (iOS, Android, Windows, Mac).</span>
+          </div>
+        </div>
+
         <!-- Step 1: Storage -->
         <div class="form-group">
           <label>1. Notes & Tasks Storage (Obsidian Vault)</label>
@@ -646,6 +657,15 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           <div class="row">
             <button class="btn btn-secondary" id="btn-service" onclick="toggleService()">Manage Service</button>
             <span id="service-status-text" style="color: var(--text-muted); font-size: 14px;"></span>
+          </div>
+        </div>
+
+        <div style="margin-top: 24px; border-top: 1px solid var(--card-border); padding-top: 20px;">
+          <div class="card-title" style="color: var(--danger);">🗑️ Uninstall HouseBot</div>
+          <div class="card-desc">Stop all background services, remove desktop shortcuts, and optionally clear local configuration. Your Obsidian notes and vaults are never touched.</div>
+          <div class="row">
+            <button class="btn btn-danger" onclick="confirmUninstall()">Uninstall HouseBot</button>
+            <span id="uninstall-status-text" style="color: var(--text-muted); font-size: 14px;"></span>
           </div>
         </div>
       </div>
@@ -949,6 +969,37 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         fetchStatus();
       } catch (e) {
         showAlert('Error: ' + e.message, true);
+      }
+    }
+
+    async function confirmUninstall() {
+      if (!confirm("Are you sure you want to uninstall HouseBot?\\n\\nThis will stop background services and remove application files. (Your personal notes and Obsidian vaults will NOT be touched).")) {
+        return;
+      }
+      const removeConfig = confirm("Do you also want to delete your HouseBot configuration (~/.config/housebot)?\\n\\nClick OK to delete configuration, or Cancel to keep your settings.");
+
+      const statusEl = document.getElementById('uninstall-status-text');
+      statusEl.textContent = 'Uninstalling HouseBot...';
+      statusEl.style.color = 'var(--text-muted)';
+
+      try {
+        const res = await fetch('/api/uninstall', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({remove_config: removeConfig, remove_data: removeConfig})
+        });
+        const data = await res.json();
+        if (data.ok) {
+          statusEl.textContent = '✓ Uninstalled successfully. You can now close this tab.';
+          statusEl.style.color = 'var(--success)';
+          showAlert('HouseBot uninstalled successfully.', false);
+        } else {
+          statusEl.textContent = '✗ Error: ' + (data.error || 'Failed');
+          statusEl.style.color = 'var(--danger)';
+        }
+      } catch (e) {
+        statusEl.textContent = '✗ ' + e.message;
+        statusEl.style.color = 'var(--danger)';
       }
     }
 
@@ -1365,6 +1416,14 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"ok": ok, "message": msg})
             else:
                 self._send_json(400, {"ok": False, "message": "Invalid action"})
+            return
+
+        if path == "/api/uninstall":
+            from .uninstaller import perform_uninstall
+            rem_cfg = bool(body.get("remove_config", False))
+            rem_data = bool(body.get("remove_data", False))
+            ok, logs = perform_uninstall(remove_config=rem_cfg, remove_data=rem_data)
+            self._send_json(200, {"ok": ok, "logs": logs, "message": "HouseBot uninstalled successfully."})
             return
 
         self.send_response(404)

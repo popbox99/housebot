@@ -498,6 +498,24 @@ The smoke test uses a temp directory and a stub LLM. It checks reminder word ord
 
 **DNS rebinding on `read_url`.** Each hop is resolved and refused if it is private, link-local, or inside `100.64.0.0/10`, then fetched by hostname. A name that changes address between those two steps can still be reached. Redirect targets go through the same check.
 
+## Uninstallation
+
+HouseBot can be completely removed at any time with a single command. Your Obsidian vaults and personal notes will **never** be touched.
+
+- **Linux & macOS**:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/uninstall.sh | bash
+  ```
+  Or via CLI: `housebot --uninstall`
+
+- **Windows (PowerShell)**:
+  ```powershell
+  irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/uninstall.ps1 | iex
+  ```
+  Or run `HouseBot.exe --uninstall`.
+
+- **Web Dashboard**: Navigate to **🖥️ System & Hardware** &rarr; click **🗑️ Uninstall HouseBot**.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

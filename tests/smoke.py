@@ -544,7 +544,18 @@ def _test_webui_server():
             if ha_res.get("ok") is not False:
                 raise AssertionError("test-ha should return ok=False for unreachable host")
 
-        # 6. POST /api/chat
+        # 6. POST /api/uninstall (safe dry test)
+        uninst_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/uninstall",
+            data=json.dumps({"remove_config": False, "remove_data": False}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(uninst_req, timeout=3) as r:
+            uninst_res = json.loads(r.read().decode("utf-8"))
+            if not uninst_res.get("ok"):
+                raise AssertionError("uninstall API should return ok=True")
+
+        # 7. POST /api/chat
         req = urllib.request.Request(
             f"http://127.0.0.1:{test_port}/api/chat",
             data=json.dumps({"message": "whats on my shopping list"}).encode("utf-8"),
@@ -579,6 +590,31 @@ def _test_homeassistant_integration():
     return True
 
 check("homeassistant late-integration configuration", _test_homeassistant_integration)
+
+def _test_uninstaller_module():
+    from housebot.uninstaller import get_uninstall_targets, perform_uninstall
+    targets = get_uninstall_targets()
+    if "launchers" not in targets or "config" not in targets:
+        raise AssertionError("get_uninstall_targets missing required target keys")
+    ok, logs = perform_uninstall(remove_config=False, remove_data=False)
+    if not ok:
+        raise AssertionError(f"perform_uninstall failed: {logs}")
+    return True
+
+check("uninstaller module and safety checks", _test_uninstaller_module)
+
+def _test_uninstaller_script_syntax():
+    import subprocess
+    from pathlib import Path
+    sh_path = Path("uninstall.sh")
+    if not sh_path.exists():
+        raise AssertionError("uninstall.sh does not exist")
+    res = subprocess.run(["bash", "-n", str(sh_path)], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise AssertionError(f"uninstall.sh bash syntax error: {res.stderr}")
+    return True
+
+check("uninstaller script syntax", _test_uninstaller_script_syntax)
 
 def _test_standalone_binary():
     import subprocess

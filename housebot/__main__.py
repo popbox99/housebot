@@ -53,6 +53,11 @@ def main():
         print(msg)
         return
 
+    if "--uninstall" in args:
+        from .uninstaller import run_cli_uninstaller
+        run_cli_uninstaller()
+        return
+
     # Auto-detect missing configuration
     if not os.path.exists(DEFAULT_CONFIG_PATH) and "--no-wizard" not in args:
         if sys.stdin.isatty():

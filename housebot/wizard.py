@@ -154,8 +154,9 @@ def run_transport_setup() -> Tuple[dict, List[str], str, dict]:
 
     if t_idx == 0:  # Telegram
         print("\nSetting up Telegram Bot:")
+        print("  💡 Tip: Make sure the Telegram app is installed and open on your phone or PC.")
         print("  1. Open Telegram and message @BotFather (https://t.me/BotFather)")
-        print("  2. Send '/newbot' and follow the prompts to create your bot.")
+        print("  2. Send '/newbot' and follow the prompts to name your bot.")
         token = input("  3. Paste your Bot Token: ").strip()
 
         print("Testing Telegram Bot Token...")
@@ -457,7 +458,12 @@ def run_wizard(config_path: Path = None):
     print("=" * 65)
     print("           🏠 Welcome to HouseBot Setup Wizard")
     print("=" * 65)
-    print("This wizard will get HouseBot configured and running on your system.")
+    print("This wizard will get HouseBot configured and running on your system.\n")
+    print("💡 PRO-TIP BEFORE YOU BEGIN:")
+    print("   If you plan to use Telegram on your phone or PC, install Telegram now")
+    print("   (https://telegram.org). Having it open makes getting your bot token from")
+    print("   @BotFather (https://t.me/BotFather) a quick 30-second tap!")
+    print("=" * 65)
 
     target_cfg = config_path or Path(os.environ.get(
         "HOUSEBOT_CONFIG", Path.home() / ".config" / "housebot" / "config.json"

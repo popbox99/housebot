@@ -116,17 +116,17 @@ def uninstall_service() -> Tuple[bool, str]:
     try:
         if os_type == "linux":
             if shutil.which("systemctl"):
-                subprocess.run(["systemctl", "--user", "stop", "housebot.service"], check=False)
-                subprocess.run(["systemctl", "--user", "disable", "housebot.service"], check=False)
+                subprocess.run(["systemctl", "--user", "stop", "housebot.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(["systemctl", "--user", "disable", "housebot.service"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if srv_path.exists():
                 srv_path.unlink()
             if shutil.which("systemctl"):
-                subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+                subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True, "Systemd service stopped and removed."
 
         elif os_type == "darwin":
             if shutil.which("launchctl") and srv_path.exists():
-                subprocess.run(["launchctl", "unload", str(srv_path)], check=False)
+                subprocess.run(["launchctl", "unload", str(srv_path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if srv_path.exists():
                 srv_path.unlink()
             return True, "macOS LaunchAgent unloaded and removed."
