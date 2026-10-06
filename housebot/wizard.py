@@ -16,6 +16,7 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -195,8 +196,33 @@ def run_transport_setup() -> Tuple[dict, List[str], str, dict]:
         meta = {"platform": "telegram", "bot_username": bot_username}
 
     elif t_idx == 1:  # Signal
-        account = input("Enter the Signal phone number registered with signal-cli (e.g. +15555550100): ").strip()
-        user_num = input("Enter your personal phone number or UUID for allowlist: ").strip()
+        print("\n" + "=" * 62)
+        print("         🔒 Signal Messenger Setup & Registration Guide")
+        print("=" * 62)
+        print("⚠️  CRITICAL WARNING:")
+        print("    Do NOT use your personal cell phone number for HouseBot!")
+        print("    Registering your personal number with a bot will de-register")
+        print("    Signal on your phone. You need a dedicated secondary number.\n")
+
+        print("💡 RECOMMENDED: Get a Free Google Voice Number")
+        print("    1. Go to https://voice.google.com on your computer or phone.")
+        print("    2. Sign in with any Google account and choose a free phone number.")
+        print("    3. Link your personal number once for verification.")
+        print("    4. Google Voice gives you a permanent, free number (e.g. +15551234567).\n")
+
+        print("📋 Registering your Google Voice number with signal-cli:")
+        print("    Step 1: Install signal-cli (brew install signal-cli / apt install signal-cli)")
+        print("    Step 2: Run in terminal:  signal-cli -u +1XXXXXXXXXX register")
+        print("    Step 3: Check your Google Voice messages for the 6-digit SMS code.")
+        print("    Step 4: Verify in terminal: signal-cli -u +1XXXXXXXXXX verify 123-456")
+        print("    Step 5: Run daemon: signal-cli --socket ~/.local/run/signal-cli/socket daemon\n")
+
+        gv_help = input("Would you like to open https://voice.google.com in your browser now? (y/N): ").strip().lower()
+        if gv_help in ("y", "yes"):
+            webbrowser.open("https://voice.google.com")
+
+        account = input("\nEnter the bot's Signal phone number (e.g. +15555550100): ").strip()
+        user_num = input("Enter your personal phone number or UUID (for security allowlist): ").strip()
         socket_path = input("Enter signal-cli socket path [~/.local/run/signal-cli/socket]: ").strip()
         if not socket_path:
             socket_path = "~/.local/run/signal-cli/socket"

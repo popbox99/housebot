@@ -498,6 +498,43 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           <span id="tg-test-result" style="margin-left: 10px; font-size: 13px;"></span>
         </div>
 
+        <div id="signal-fields" style="display: none; background: #0f172a; padding: 18px; border-radius: 8px; margin-bottom: 18px; border: 1px solid var(--card-border);">
+          <div style="background: rgba(245, 158, 11, 0.15); border: 1px solid var(--warning); padding: 12px; border-radius: 6px; margin-bottom: 14px;">
+            <div style="font-weight: 700; color: #fbbf24; font-size: 14px; margin-bottom: 4px;">⚠️ Do NOT use your personal cell phone number!</div>
+            <div style="font-size: 13px; color: var(--text-muted);">
+              Registering your personal cell number with a bot will de-register Signal on your phone. Instead, get a free dedicated number from Google Voice.
+            </div>
+          </div>
+
+          <div style="background: #1e293b; padding: 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;">
+            <div style="font-weight: 700; color: #818cf8; margin-bottom: 6px;">💡 Step-by-Step Google Voice & Signal Guide:</div>
+            <ol style="margin-left: 20px; line-height: 1.6; color: var(--text-muted);">
+              <li>Go to <a href="https://voice.google.com" target="_blank" style="color: #818cf8; font-weight: 600;">voice.google.com</a> and claim a free US/Canada phone number.</li>
+              <li>Register it in your terminal with signal-cli:<br><code style="background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #e2e8f0;">signal-cli -u +1XXXXXXXXXX register</code></li>
+              <li>Check your Google Voice inbox for the 6-digit SMS verification code.</li>
+              <li>Verify it in your terminal:<br><code style="background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #e2e8f0;">signal-cli -u +1XXXXXXXXXX verify 123-456</code></li>
+              <li>Start the background daemon:<br><code style="background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #e2e8f0;">signal-cli --socket ~/.local/run/signal-cli/socket daemon</code></li>
+            </ol>
+            <div style="margin-top: 10px;">
+              <a href="https://voice.google.com" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">↗ Open Google Voice</a>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Bot's Signal Phone Number (Google Voice Number)</label>
+            <input type="text" id="signal-account" placeholder="+15555550100">
+          </div>
+          <div class="form-group">
+            <label>Your Personal Phone Number (Allowlist Security)</label>
+            <input type="text" id="signal-user-id" placeholder="+15555550199">
+            <small style="color: var(--text-muted);">Only messages sent from this phone number will be accepted.</small>
+          </div>
+          <div class="form-group">
+            <label>signal-cli Socket Path</label>
+            <input type="text" id="signal-socket" value="~/.local/run/signal-cli/socket">
+          </div>
+        </div>
+
         <!-- Save Button -->
         <div style="margin-top: 24px;">
           <button class="btn btn-success" onclick="saveConfiguration()">💾 Save & Launch HouseBot</button>
@@ -514,24 +551,19 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         <div class="guide-step">
           <div class="step-num">1</div>
           <div class="step-body">
-            <h4>Install Telegram Messenger</h4>
-            <p style="color: var(--text-muted);">Download Telegram on your <a href="https://apps.apple.com/app/telegram-messenger/id686449807" target="_blank" style="color: #818cf8;">iPhone (App Store)</a> or <a href="https://play.google.com/store/apps/details?id=org.telegram.messenger" target="_blank" style="color: #818cf8;">Android (Play Store)</a>.</p>
+            <h4>Primary Messenger (Telegram or Signal)</h4>
+            <p style="color: var(--text-muted);">
+              <b>For Telegram:</b> Download Telegram on your <a href="https://apps.apple.com/app/telegram-messenger/id686449807" target="_blank" style="color: #818cf8;">iPhone (App Store)</a> or <a href="https://play.google.com/store/apps/details?id=org.telegram.messenger" target="_blank" style="color: #818cf8;">Android (Play Store)</a>. Search for your bot username and tap <b>START</b>.<br><br>
+              <b>For Signal:</b> Download Signal on <a href="https://apps.apple.com/app/signal-private-messenger/id874135377" target="_blank" style="color: #818cf8;">iPhone</a> or <a href="https://play.google.com/store/apps/details?id=org.thoughtcrime.securesms" target="_blank" style="color: #818cf8;">Android</a>. Add your bot's Google Voice number to your phone contacts as <i>"HouseBot"</i>, then message it directly!
+            </p>
           </div>
         </div>
 
         <div class="guide-step">
           <div class="step-num">2</div>
           <div class="step-body">
-            <h4>Start a Chat with Your Bot</h4>
-            <p style="color: var(--text-muted);">Search for your bot's username in Telegram, or tap the direct link from the setup tab. Tap <b>START</b>.</p>
-          </div>
-        </div>
-
-        <div class="guide-step">
-          <div class="step-num">3</div>
-          <div class="step-body">
-            <h4>Obsidian Mobile Sync</h4>
-            <p style="color: var(--text-muted);">If you use Obsidian on mobile, enable <b>Obsidian Sync</b> or use iCloud / Syncthing so all notes created by HouseBot appear instantly on your phone.</p>
+            <h4>Obsidian Mobile Sync (Optional)</h4>
+            <p style="color: var(--text-muted);">If you use Obsidian on your phone, enable <b>Obsidian Sync</b> or use iCloud / Syncthing so all notes, reminders, and lists created by HouseBot sync live to your phone.</p>
           </div>
         </div>
       </div>
@@ -700,6 +732,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     function onTransportChange() {
       const t = document.getElementById('transport-choice').value;
       document.getElementById('telegram-fields').style.display = (t === 'telegram') ? 'block' : 'none';
+      document.getElementById('signal-fields').style.display = (t === 'signal') ? 'block' : 'none';
     }
 
     async function testLlmConnection() {
@@ -785,6 +818,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         telegram: {
           token: document.getElementById('tg-token').value.trim(),
           user_id: document.getElementById('tg-user-id').value.trim()
+        },
+        signal: {
+          account: document.getElementById('signal-account').value.trim(),
+          user_id: document.getElementById('signal-user-id').value.trim(),
+          socket: document.getElementById('signal-socket').value.trim()
         }
       };
 
@@ -1028,6 +1066,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 llm_info = body.get("llm", {})
                 transport_choice = body.get("transport", "web")
                 tg_info = body.get("telegram", {})
+                signal_info = body.get("signal", {})
 
                 allowed_senders = []
                 transports = {
@@ -1043,7 +1082,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     if user_id:
                         allowed_senders.append(user_id)
                 elif transport_choice == "signal":
-                    transports["signal"]["enabled"] = True
+                    account = signal_info.get("account", "").strip()
+                    user_id = signal_info.get("user_id", "").strip()
+                    socket_path = signal_info.get("socket", "").strip() or "~/.local/run/signal-cli/socket"
+                    transports["signal"] = {"enabled": True, "account": account, "socket": socket_path}
+                    if user_id:
+                        allowed_senders.append(user_id)
 
                 backends = [{
                     "name": "default",
