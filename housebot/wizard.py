@@ -365,6 +365,29 @@ def run_llm_setup() -> List[dict]:
     return backends
 
 
+def run_ha_setup() -> Optional[dict]:
+    """Optional step: configure Home Assistant connection."""
+    print("\n--- Smart Home (Home Assistant) ---")
+    use_ha = input("Do you use Home Assistant for smart home automation? (y/N): ").strip().lower()
+    if use_ha not in ("y", "yes"):
+        print("ℹ️ Skipping Home Assistant. You can connect it at any time later from the Web Dashboard or by re-running housebot --setup.")
+        return None
+
+    url = input("Enter Home Assistant URL [http://homeassistant.local:8123]: ").strip() or "http://homeassistant.local:8123"
+    token = input("Enter Long-Lived Access Token (from HA Profile -> Security): ").strip()
+    person = input("Enter Person entity for location reminders (e.g. person.matt) [optional]: ").strip()
+    vacuum = input("Enter Vacuum entity [vacuum.robot]: ").strip() or "vacuum.robot"
+
+    return {
+        "enabled": bool(url and token),
+        "base_url": url.rstrip("/"),
+        "token": token,
+        "person_entity": person,
+        "vacuum_entity": vacuum,
+        "zones": {"home": "home"},
+    }
+
+
 def run_phone_guide(transport_meta: dict, is_obsidian: bool):
     """Walk the user through the exact mobile apps they need on their phone."""
     print("\n--- [Step 5/5] Mobile Phone Companion Apps ---")
@@ -445,6 +468,27 @@ def run_wizard(config_path: Path = None):
     transports, allowed_senders, owner, meta = run_transport_setup()
     backends = run_llm_setup()
 
+    # Optional Home Assistant
+    ha_cfg = run_ha_setup()
+    skills_cfg = {
+        "notes_dir": notes_dir,
+        "search_dirs": [notes_dir],
+    }
+    if ha_cfg:
+        skills_cfg["homeassistant"] = ha_cfg
+
+    # Merge existing configuration if present
+    if target_cfg.exists():
+        try:
+            with open(target_cfg, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+            if "skills" in existing and isinstance(existing["skills"], dict):
+                for k, v in existing["skills"].items():
+                    if k not in skills_cfg:
+                        skills_cfg[k] = v
+        except Exception:
+            pass
+
     # Build finalized config dict
     data_dir = str(Path.home() / ".local" / "share" / "housebot")
     final_config = {
@@ -462,10 +506,7 @@ def run_wizard(config_path: Path = None):
                 "api": "ollama",
             }],
         },
-        "skills": {
-            "notes_dir": notes_dir,
-            "search_dirs": [notes_dir],
-        },
+        "skills": skills_cfg,
         "transports": transports,
     }
 

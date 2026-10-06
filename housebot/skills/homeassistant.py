@@ -17,7 +17,7 @@ class HomeAssistant:
         s = cfg["skills"].get("homeassistant") or {}
         self.enabled = bool(s.get("enabled") and s.get("base_url"))
         self.base = (s.get("base_url") or "").rstrip("/")
-        self.token = self._read_token(s.get("token_file"))
+        self.token = s.get("token") or self._read_token(s.get("token_file"))
         self.person_entity = s.get("person_entity", "")
         self.vacuum_entity = s.get("vacuum_entity", "vacuum.robot")
         self.zones = s.get("zones") or {"home": "home"}

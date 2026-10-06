@@ -528,7 +528,23 @@ def _test_webui_server():
             if "profile" not in hw_data or "recommendation" not in hw_data:
                 raise AssertionError("hardware API missing fields")
 
-        # 4. POST /api/chat
+        # 4. GET /api/config
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/config", timeout=3) as r:
+            if r.status != 200:
+                raise AssertionError("/api/config status not 200")
+
+        # 5. POST /api/test-ha (validation failure check)
+        ha_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/test-ha",
+            data=json.dumps({"base_url": "http://127.0.0.1:9999", "token": "bad-token"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(ha_req, timeout=3) as r:
+            ha_res = json.loads(r.read().decode("utf-8"))
+            if ha_res.get("ok") is not False:
+                raise AssertionError("test-ha should return ok=False for unreachable host")
+
+        # 6. POST /api/chat
         req = urllib.request.Request(
             f"http://127.0.0.1:{test_port}/api/chat",
             data=json.dumps({"message": "whats on my shopping list"}).encode("utf-8"),
@@ -544,6 +560,25 @@ def _test_webui_server():
     return True
 
 check("webui server and rest endpoints", _test_webui_server)
+
+def _test_homeassistant_integration():
+    from housebot.skills.homeassistant import HomeAssistant
+    cfg_mock = Config()
+    cfg_mock._data["skills"]["homeassistant"] = {
+        "enabled": True,
+        "base_url": "http://127.0.0.1:8123",
+        "token": "test-long-lived-token",
+        "person_entity": "person.matt",
+        "vacuum_entity": "vacuum.robot",
+    }
+    ha = HomeAssistant(cfg_mock)
+    if not ha.enabled:
+        raise AssertionError("HomeAssistant skill should be enabled")
+    if ha.token != "test-long-lived-token":
+        raise AssertionError(f"Expected inline token 'test-long-lived-token', got {ha.token}")
+    return True
+
+check("homeassistant late-integration configuration", _test_homeassistant_integration)
 
 def _test_standalone_binary():
     import subprocess

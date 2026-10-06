@@ -535,6 +535,52 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           </div>
         </div>
 
+        <!-- Step 4: Home Assistant (Optional) -->
+        <div class="form-group" style="border-top: 1px solid var(--card-border); padding-top: 18px; margin-top: 18px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; font-size: 14px;">
+            <input type="checkbox" id="ha-enabled" onchange="onHaToggle()" style="width: 18px; height: 18px; accent-color: var(--accent);">
+            <span><b>4. Connect to Home Assistant (Optional)</b></span>
+          </label>
+          <small style="color: var(--text-muted); display: block; margin-top: 4px;">
+            Connect your smart home to enable location-based reminders ("remind me when I get home"), vacuum control, and voice satellites.
+          </small>
+        </div>
+
+        <div id="ha-fields" style="display: none; background: #0f172a; padding: 18px; border-radius: 8px; margin-bottom: 18px; border: 1px solid var(--card-border);">
+          <div class="form-group">
+            <label>Home Assistant URL</label>
+            <input type="text" id="ha-url" value="http://homeassistant.local:8123">
+          </div>
+          <div class="form-group">
+            <label>Long-Lived Access Token</label>
+            <input type="password" id="ha-token" placeholder="Paste your Long-Lived Access Token...">
+            <small style="color: var(--text-muted);">In Home Assistant: Click your Profile icon at bottom-left &rarr; Security &rarr; Create Long-Lived Access Token.</small>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label>Person Entity (For Location Reminders)</label>
+              <input type="text" id="ha-person" placeholder="person.matt">
+            </div>
+            <div>
+              <label>Vacuum Entity</label>
+              <input type="text" id="ha-vacuum" value="vacuum.robot">
+            </div>
+          </div>
+          <div style="margin-top: 12px;">
+            <button class="btn btn-secondary btn-sm" onclick="testHaConnection()">🏠 Test Home Assistant Connection</button>
+            <span id="ha-test-result" style="margin-left: 10px; font-size: 13px;"></span>
+          </div>
+
+          <div style="background: #1e293b; padding: 12px; border-radius: 6px; margin-top: 16px; font-size: 13px;">
+            <div style="font-weight: 700; color: #818cf8; margin-bottom: 4px;">🎙️ Use HouseBot as Home Assistant's Voice Brain (Assist):</div>
+            <p style="color: var(--text-muted); line-height: 1.5;">
+              In Home Assistant: Go to <b>Settings &rarr; Devices & Services &rarr; Add Integration &rarr; OpenAI Conversation</b>.<br>
+              Server URL: <code style="color: white; background: #0f172a; padding: 2px 5px; border-radius: 3px;">http://&lt;your-computer-ip&gt;:8082/v1</code> &bull; API Key: <code style="color: white; background: #0f172a; padding: 2px 5px; border-radius: 3px;">housebot-local</code><br>
+              Your smart speakers and Assist microphones will now speak directly with HouseBot!
+            </p>
+          </div>
+        </div>
+
         <!-- Save Button -->
         <div style="margin-top: 24px;">
           <button class="btn btn-success" onclick="saveConfiguration()">💾 Save & Launch HouseBot</button>
@@ -798,6 +844,44 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       }
     }
 
+    function onHaToggle() {
+      const enabled = document.getElementById('ha-enabled').checked;
+      document.getElementById('ha-fields').style.display = enabled ? 'block' : 'none';
+    }
+
+    async function testHaConnection() {
+      const resEl = document.getElementById('ha-test-result');
+      resEl.textContent = 'Testing connection to Home Assistant...';
+      resEl.style.color = 'var(--text-muted)';
+
+      const url = document.getElementById('ha-url').value.trim();
+      const token = document.getElementById('ha-token').value.trim();
+      if (!token) {
+        resEl.textContent = 'Please enter an access token first';
+        resEl.style.color = 'var(--warning)';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/test-ha', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({base_url: url, token: token})
+        });
+        const data = await res.json();
+        if (data.ok) {
+          resEl.textContent = '✓ ' + (data.message || 'Connected successfully!');
+          resEl.style.color = 'var(--success)';
+        } else {
+          resEl.textContent = '✗ ' + (data.error || 'Connection failed');
+          resEl.style.color = 'var(--danger)';
+        }
+      } catch (e) {
+        resEl.textContent = '✗ ' + e.message;
+        resEl.style.color = 'var(--danger)';
+      }
+    }
+
     async function saveConfiguration() {
       const notesDir = document.getElementById('custom-notes-dir').value || '~/Documents/Notes';
       const provider = document.getElementById('llm-provider').value;
@@ -823,6 +907,13 @@ HTML_DASHBOARD = """<!DOCTYPE html>
           account: document.getElementById('signal-account').value.trim(),
           user_id: document.getElementById('signal-user-id').value.trim(),
           socket: document.getElementById('signal-socket').value.trim()
+        },
+        homeassistant: {
+          enabled: document.getElementById('ha-enabled').checked,
+          base_url: document.getElementById('ha-url').value.trim(),
+          token: document.getElementById('ha-token').value.trim(),
+          person_entity: document.getElementById('ha-person').value.trim(),
+          vacuum_entity: document.getElementById('ha-vacuum').value.trim()
         }
       };
 
@@ -902,11 +993,78 @@ HTML_DASHBOARD = """<!DOCTYPE html>
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
+    async function loadExistingConfig() {
+      try {
+        const res = await fetch('/api/config');
+        const cfg = await res.json();
+        if (!cfg || !Object.keys(cfg).length) return;
+
+        // Notes dir
+        if (cfg.skills && cfg.skills.notes_dir) {
+          const notesInput = document.getElementById('custom-notes-dir');
+          if (notesInput) notesInput.value = cfg.skills.notes_dir;
+        }
+
+        // LLM settings
+        if (cfg.llm && cfg.llm.backends && cfg.llm.backends.length > 0) {
+          const b = cfg.llm.backends[0];
+          if (b.api) {
+            const provSelect = document.getElementById('llm-provider');
+            if (b.api === 'ollama') provSelect.value = 'ollama';
+            else if (b.base_url && b.base_url.includes('1234')) provSelect.value = 'lmstudio';
+            else if (b.base_url && b.base_url.includes('openai')) provSelect.value = 'openai';
+            else provSelect.value = 'ollama';
+          }
+          if (b.base_url) document.getElementById('llm-base-url').value = b.base_url;
+          if (b.model) document.getElementById('llm-model').value = b.model;
+          if (b.api_key) {
+            document.getElementById('llm-api-key').value = b.api_key;
+            document.getElementById('api-key-group').style.display = 'block';
+          }
+        }
+
+        // Transports
+        if (cfg.transports) {
+          if (cfg.transports.telegram && cfg.transports.telegram.enabled) {
+            document.getElementById('transport-choice').value = 'telegram';
+            document.getElementById('tg-token').value = cfg.transports.telegram.token || '';
+            if (cfg.bot && cfg.bot.allowed_senders && cfg.bot.allowed_senders.length) {
+              document.getElementById('tg-user-id').value = cfg.bot.allowed_senders[0];
+            }
+          } else if (cfg.transports.signal && cfg.transports.signal.enabled) {
+            document.getElementById('transport-choice').value = 'signal';
+            document.getElementById('signal-account').value = cfg.transports.signal.account || '';
+            document.getElementById('signal-socket').value = cfg.transports.signal.socket || '';
+            if (cfg.bot && cfg.bot.allowed_senders && cfg.bot.allowed_senders.length) {
+              document.getElementById('signal-user-id').value = cfg.bot.allowed_senders[0];
+            }
+          }
+          onTransportChange();
+        }
+
+        // Home Assistant
+        if (cfg.skills && cfg.skills.homeassistant) {
+          const ha = cfg.skills.homeassistant;
+          if (ha.enabled) {
+            document.getElementById('ha-enabled').checked = true;
+            document.getElementById('ha-fields').style.display = 'block';
+            if (ha.base_url) document.getElementById('ha-url').value = ha.base_url;
+            if (ha.token) document.getElementById('ha-token').value = ha.token;
+            if (ha.person_entity) document.getElementById('ha-person').value = ha.person_entity;
+            if (ha.vacuum_entity) document.getElementById('ha-vacuum').value = ha.vacuum_entity;
+          }
+        }
+      } catch (e) {
+        console.error('loadExistingConfig failed:', e);
+      }
+    }
+
     // Initialize on page load
     window.onload = function() {
       fetchStatus();
       loadHardware();
       loadVaults();
+      loadExistingConfig();
     };
   </script>
 </body>
@@ -985,6 +1143,16 @@ class WebUIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/api/config":
+            cfg = self.server_instance.cfg
+            if not cfg and os.path.exists(DEFAULT_CONFIG_PATH):
+                try:
+                    cfg = Config(DEFAULT_CONFIG_PATH)
+                except Exception:
+                    pass
+            self._send_json(200, cfg.to_dict() if cfg else {})
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -1038,6 +1206,38 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     "error": meta.get("error", "Invalid Telegram token"),
                 })
             return
+
+        if path == "/api/test-ha":
+            base_url = (body.get("base_url") or "").rstrip("/")
+            token = (body.get("token") or "").strip()
+            if not base_url:
+                self._send_json(200, {"ok": False, "error": "Home Assistant URL cannot be empty"})
+                return
+            if not base_url.startswith("http"):
+                base_url = f"http://{base_url}"
+            endpoint = f"{base_url}/api/"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "User-Agent": "HouseBot/0.2.0",
+            }
+            req = urllib.request.Request(endpoint, headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=4.0) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        msg = data.get("message", "API running.")
+                        self._send_json(200, {"ok": True, "message": f"Connected to Home Assistant! ({msg})"})
+                        return
+                    else:
+                        self._send_json(200, {"ok": False, "error": f"Home Assistant returned status {resp.status}"})
+                        return
+            except urllib.error.HTTPError as e:
+                self._send_json(200, {"ok": False, "error": f"HTTP {e.code}: {e.reason} (Check your Long-Lived Token)"})
+                return
+            except Exception as e:
+                self._send_json(200, {"ok": False, "error": f"Failed to connect to {base_url}: {e}"})
+                return
 
         if path == "/api/chat":
             msg = body.get("message", "").strip()
@@ -1098,6 +1298,37 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 if llm_info.get("api_key"):
                     backends[0]["api_key"] = llm_info.get("api_key")
 
+                ha_info = body.get("homeassistant", {})
+                skills_cfg = {
+                    "notes_dir": notes_dir,
+                    "search_dirs": [notes_dir],
+                }
+                if ha_info.get("enabled"):
+                    skills_cfg["homeassistant"] = {
+                        "enabled": True,
+                        "base_url": (ha_info.get("base_url") or "http://homeassistant.local:8123").rstrip("/"),
+                        "token": ha_info.get("token", "").strip(),
+                        "person_entity": ha_info.get("person_entity", "").strip(),
+                        "vacuum_entity": ha_info.get("vacuum_entity", "vacuum.robot").strip(),
+                        "zones": {"home": "home"},
+                    }
+                elif "enabled" in ha_info and not ha_info.get("enabled"):
+                    skills_cfg["homeassistant"] = {"enabled": False}
+
+                target_cfg = Path(DEFAULT_CONFIG_PATH)
+                existing = {}
+                if target_cfg.exists():
+                    try:
+                        with open(target_cfg, "r", encoding="utf-8") as f:
+                            existing = json.load(f)
+                    except Exception:
+                        pass
+
+                if "skills" in existing and isinstance(existing["skills"], dict):
+                    merged_skills = dict(existing["skills"])
+                    merged_skills.update(skills_cfg)
+                    skills_cfg = merged_skills
+
                 config_data = {
                     "bot": {
                         "name": "HouseBot",
@@ -1105,14 +1336,10 @@ class WebUIHandler(BaseHTTPRequestHandler):
                         "allowed_senders": allowed_senders,
                     },
                     "llm": {"backends": backends},
-                    "skills": {
-                        "notes_dir": notes_dir,
-                        "search_dirs": [notes_dir],
-                    },
+                    "skills": skills_cfg,
                     "transports": transports,
                 }
 
-                target_cfg = Path(DEFAULT_CONFIG_PATH)
                 target_cfg.parent.mkdir(parents=True, exist_ok=True)
                 with open(target_cfg, "w", encoding="utf-8") as f:
                     json.dump(config_data, f, indent=2, ensure_ascii=False)

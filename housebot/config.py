@@ -49,7 +49,7 @@ DEFAULTS = {
                    "api_key_file": "", "fallback_url": ""},
         "paperless": {"enabled": False, "base_url": "http://127.0.0.1:8010",
                       "token_file": ""},
-        "homeassistant": {"enabled": False, "base_url": "", "token_file": "",
+        "homeassistant": {"enabled": False, "base_url": "", "token": "", "token_file": "",
                           "person_entity": "", "zones": {"home": "home"},
                           "vacuum_entity": "vacuum.robot"},
         "watchdog": {"enabled": False, "ntfy_topic": "",
@@ -97,6 +97,9 @@ class Config:
 
     def get(self, key, default=None):
         return self._data.get(key, default)
+
+    def to_dict(self):
+        return dict(self._data)
 
     @property
     def data_dir(self):
