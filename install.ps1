@@ -1,7 +1,7 @@
 # ==============================================================================
 # HouseBot 1-Line Installer for Windows (Option 3)
 # Usage in PowerShell:
-#   irm https://raw.githubusercontent.com/popbox99/housebot/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.ps1 | iex
 # ==============================================================================
 $ErrorActionPreference = "Stop"
 
@@ -21,12 +21,13 @@ if (Get-Command "python" -ErrorAction SilentlyContinue) {
     Write-Host "Using Python $PyVer" -ForegroundColor Gray
 
     # Clone or fetch source
-    $ZipUrl = "https://github.com/popbox99/housebot/archive/refs/heads/main.zip"
+    $ZipUrl = "https://github.com/popbox99/HouseBotInstaller/archive/refs/heads/main.zip"
     $ZipFile = "$env:TEMP\housebot.zip"
     Write-Host "Downloading HouseBot..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri $ZipUrl -OutFile $ZipFile
     Expand-Archive -Path $ZipFile -DestinationPath $env:TEMP\housebot-extract -Force
-    Copy-Item -Path "$env:TEMP\housebot-extract\housebot-main\*" -Destination $InstallDir -Recurse -Force
+    $ExtractedFolder = Get-ChildItem -Path "$env:TEMP\housebot-extract" | Select-Object -First 1
+    Copy-Item -Path "$($ExtractedFolder.FullName)\*" -Destination $InstallDir -Recurse -Force
     Remove-Item -Path $ZipFile, "$env:TEMP\housebot-extract" -Recurse -Force
 
     # Create virtual environment
@@ -41,7 +42,7 @@ if (Get-Command "python" -ErrorAction SilentlyContinue) {
     "@echo off`r`n`"$VenvPython`" -m housebot %*" | Out-File -FilePath $BatchLauncher -Encoding ASCII
 } else {
     Write-Host "Downloading standalone HouseBot.exe..." -ForegroundColor Yellow
-    $ExeUrl = "https://github.com/popbox99/housebot/releases/latest/download/HouseBot-Windows-x64.exe"
+    $ExeUrl = "https://github.com/popbox99/HouseBotInstaller/releases/latest/download/HouseBot-Windows-x64.exe"
     Invoke-WebRequest -Uri $ExeUrl -OutFile $BinFile
 }
 

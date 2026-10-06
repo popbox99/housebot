@@ -2,11 +2,11 @@
 # ==============================================================================
 # HouseBot 1-Line Installer for Linux and macOS (Option 3)
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/popbox99/housebot/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.sh | bash
 # ==============================================================================
 set -e
 
-REPO_URL="https://github.com/popbox99/housebot.git"
+REPO_URL="https://github.com/popbox99/HouseBotInstaller.git"
 INSTALL_DIR="${HOME}/.local/share/housebot-app"
 BIN_DIR="${HOME}/.local/bin"
 
@@ -36,7 +36,7 @@ else
     else
         echo "Creating directory..."
         mkdir -p "${INSTALL_DIR}"
-        curl -fsSL "https://github.com/popbox99/housebot/archive/refs/heads/main.tar.gz" | tar -xz --strip-components=1 -C "${INSTALL_DIR}"
+        curl -fsSL "https://github.com/popbox99/HouseBotInstaller/archive/refs/heads/main.tar.gz" | tar -xz --strip-components=1 -C "${INSTALL_DIR}"
     fi
 fi
 
