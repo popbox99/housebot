@@ -504,13 +504,13 @@ HouseBot can be completely removed at any time with a single command. Your Obsid
 
 - **Linux & macOS**:
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/uninstall.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/popbox99/housebot/master/uninstall.sh | bash
   ```
   Or via CLI: `housebot --uninstall`
 
 - **Windows (PowerShell)**:
   ```powershell
-  irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/uninstall.ps1 | iex
+  irm https://raw.githubusercontent.com/popbox99/housebot/master/uninstall.ps1 | iex
   ```
   Or run `HouseBot.exe --uninstall`.
 

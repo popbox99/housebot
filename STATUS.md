@@ -1,10 +1,10 @@
 # HouseBot Project State & Continuity Summary
 
-**Last Updated:** October 5, 2026 (Evening Session)  
+**Last Updated:** October 8, 2026  
 **Active Working Directory:** `/home/archbox/Work/housebot`  
-**GitHub Repository:** [popbox99/HouseBotInstaller](https://github.com/popbox99/HouseBotInstaller) (tracking `main`)  
+**GitHub Repository:** [popbox99/housebot](https://github.com/popbox99/housebot)  
 **Active Feature Branch:** `feature/mvp-refactor`  
-**Smoke Test Suite:** 40/40 Passing (`python3 tests/smoke.py`)
+**Smoke Test Suite:** 42/42 Passing (`python3 tests/smoke.py`)
 
 ---
 

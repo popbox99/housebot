@@ -1,7 +1,7 @@
 # ==============================================================================
 # HouseBot 1-Line Installer for Windows (Option 3)
 # Usage in PowerShell:
-#   irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/popbox99/housebot/master/install.ps1 | iex
 # ==============================================================================
 $ErrorActionPreference = "Stop"
 
@@ -21,7 +21,7 @@ if (Get-Command "python" -ErrorAction SilentlyContinue) {
     Write-Host "Using Python $PyVer" -ForegroundColor Gray
 
     # Clone or fetch source
-    $ZipUrl = "https://github.com/popbox99/HouseBotInstaller/archive/refs/heads/main.zip"
+    $ZipUrl = "https://github.com/popbox99/housebot/archive/refs/heads/master.zip"
     $ZipFile = "$env:TEMP\housebot.zip"
     Write-Host "Downloading HouseBot..." -ForegroundColor Yellow
     Invoke-WebRequest -Uri $ZipUrl -OutFile $ZipFile
@@ -36,13 +36,14 @@ if (Get-Command "python" -ErrorAction SilentlyContinue) {
         Write-Host "Setting up isolated virtual environment..." -ForegroundColor Yellow
         python -m venv "$InstallDir\.venv"
     }
+    & "$InstallDir\.venv\Scripts\pip.exe" install --quiet -e "$InstallDir" --no-deps
 
     # Create batch wrapper in user path
     $BatchLauncher = "$InstallDir\housebot.cmd"
-    "@echo off`r`n`"$VenvPython`" -m housebot %*" | Out-File -FilePath $BatchLauncher -Encoding ASCII
+    "@echo off`r`nset PYTHONPATH=%~dp0;%PYTHONPATH%`r`n`"$VenvPython`" -m housebot %*" | Out-File -FilePath $BatchLauncher -Encoding ASCII
 } else {
     Write-Host "Downloading standalone HouseBot.exe..." -ForegroundColor Yellow
-    $ExeUrl = "https://github.com/popbox99/HouseBotInstaller/releases/latest/download/HouseBot-Windows-x64.exe"
+    $ExeUrl = "https://github.com/popbox99/housebot/releases/latest/download/HouseBot-Windows-x64.exe"
     Invoke-WebRequest -Uri $ExeUrl -OutFile $BinFile
 }
 

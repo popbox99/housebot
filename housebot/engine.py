@@ -88,6 +88,8 @@ class Engine:
             "READ_URL": self._read_url,
             "BATTERIES": lambda arg, text, hist: self._batteries(),
             "VACUUM": self._vacuum,
+            "DEVICE": self._device_control,
+            "HA_STATE": self._ha_state,
         }
 
     # -- availability shims ---------------------------------------------------
@@ -224,9 +226,23 @@ class Engine:
         return self._ha.battery_report()
 
     def _vacuum(self, arg, text, hist):
-        if not self._ha:
+        if not self._ha or not self._ha.enabled:
             return self._unconfigured("Vacuum control", "homeassistant")
         return self._ha.vacuum((arg or "").strip().lower() or "status")
+
+    def _device_control(self, arg, text, hist):
+        if not self._ha or not self._ha.enabled:
+            return self._unconfigured("Home Assistant device control", "homeassistant")
+        if ":" in (arg or ""):
+            action, target = (arg or "").split(":", 1)
+        else:
+            action, target = "toggle", (arg or text or "")
+        return self._ha.device_control(action, target)
+
+    def _ha_state(self, arg, text, hist):
+        if not self._ha or not self._ha.enabled:
+            return self._unconfigured("Home Assistant state query", "homeassistant")
+        return self._ha.device_state(arg or text or "")
 
     def _read_url(self, arg, text, hist):
         m = re.search(r"https?://\S+", arg or text or "")

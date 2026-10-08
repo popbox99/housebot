@@ -1204,6 +1204,35 @@ class WebUIHandler(BaseHTTPRequestHandler):
             self._send_json(200, cfg.to_dict() if cfg else {})
             return
 
+        if path in ("/v1/models", "/models"):
+            auth_header = self.headers.get("Authorization", "")
+            cfg = self.server_instance.cfg
+            expected_token = ""
+            if cfg:
+                api_cfg = cfg.get("transports", {}).get("api", {})
+                expected_token = api_cfg.get("token") or ""
+            expected_token = expected_token or "housebot-local"
+            provided = auth_header.replace("Bearer ", "", 1) if auth_header.startswith("Bearer ") else ""
+            if expected_token and provided != expected_token:
+                self.send_response(401)
+                self.end_headers()
+                return
+            data = json.dumps({
+                "object": "list",
+                "data": [{
+                    "id": "housebot",
+                    "object": "model",
+                    "created": 1677610602,
+                    "owned_by": "housebot"
+                }]
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -1309,6 +1338,60 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self._send_json(200, {"reply": reply or "(Empty reply)"})
             except Exception as e:
                 self._send_json(200, {"reply": f"Error handling message: {e}"})
+            return
+
+        if path in ("/v1/chat/completions", "/chat/completions"):
+            auth_header = self.headers.get("Authorization", "")
+            cfg = self.server_instance.cfg
+            expected_token = ""
+            if cfg:
+                api_cfg = cfg.get("transports", {}).get("api", {})
+                expected_token = api_cfg.get("token") or ""
+            expected_token = expected_token or "housebot-local"
+            provided = auth_header.replace("Bearer ", "", 1) if auth_header.startswith("Bearer ") else ""
+            if expected_token and provided != expected_token:
+                self.send_response(401)
+                self.end_headers()
+                return
+
+            engine = self.server_instance.engine
+            if not engine:
+                try:
+                    loaded_cfg = self.server_instance.cfg or Config()
+                    from .engine import Engine
+                    engine = Engine(loaded_cfg)
+                    self.server_instance.engine = engine
+                except Exception as e:
+                    self._send_json(500, {"error": f"Bot engine failed: {e}"})
+                    return
+
+            messages = body.get("messages") or []
+            last = messages[-1] if messages and isinstance(messages[-1], dict) else {}
+            text = last.get("content") if isinstance(last.get("content"), str) else ""
+            prior = []
+            for m in messages[:-1][-3:]:
+                if isinstance(m, dict) and isinstance(m.get("content"), str):
+                    prior.append({"role": m.get("role") or "user", "content": m.get("content")})
+            engine.history["api"] = prior
+            reply, _att = engine.handle("api", text)
+            if reply is None:
+                reply = ""
+            out = {
+                "id": "housebot",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": reply},
+                    "finish_reason": "stop"
+                }]
+            }
+            data = json.dumps(out).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
             return
 
         if path == "/api/save-config":
@@ -1439,24 +1522,25 @@ class WebUIServer(ThreadingHTTPServer):
         self.engine = engine
 
 
-def find_available_port(start_port: int = 8082, max_attempts: int = 10) -> int:
+def find_available_port(start_port: int = 8082, max_attempts: int = 10, host: str = "0.0.0.0") -> int:
     """Find an available TCP port starting from start_port."""
     for p in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
-                s.bind(("127.0.0.1", p))
+                s.bind((host, p))
                 return p
             except OSError:
                 continue
     # Fallback to OS assigned ephemeral port
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
+        s.bind((host, 0))
         return s.getsockname()[1]
 
 
 def start_webui(
     cfg=None,
     engine=None,
+    host: str = "0.0.0.0",
     port: int = 8082,
     open_browser: bool = True,
     in_background: bool = False,
@@ -1466,17 +1550,17 @@ def start_webui(
     If in_background is True, runs in a daemon thread and returns (server, port, thread).
     Otherwise blocks serving requests.
     """
-    actual_port = find_available_port(port)
-    server = WebUIServer("127.0.0.1", actual_port, cfg=cfg, engine=engine)
+    actual_port = find_available_port(port, host=host)
+    server = WebUIServer(host, actual_port, cfg=cfg, engine=engine)
 
-    url = f"http://127.0.0.1:{actual_port}"
-    print(f"[housebot] Web dashboard & setup available at: {url}")
+    local_url = f"http://127.0.0.1:{actual_port}"
+    print(f"[housebot] Web dashboard & setup available at: {local_url} (LAN: http://{host}:{actual_port})")
 
     if open_browser:
         def _open():
             time.sleep(0.3)
             try:
-                webbrowser.open_new_tab(url)
+                webbrowser.open_new_tab(local_url)
             except Exception:
                 pass
         threading.Thread(target=_open, daemon=True, name="browser-launcher").start()

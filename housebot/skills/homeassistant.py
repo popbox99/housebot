@@ -15,9 +15,9 @@ import urllib.request
 class HomeAssistant:
     def __init__(self, cfg):
         s = cfg["skills"].get("homeassistant") or {}
-        self.enabled = bool(s.get("enabled") and s.get("base_url"))
-        self.base = (s.get("base_url") or "").rstrip("/")
         self.token = s.get("token") or self._read_token(s.get("token_file"))
+        self.enabled = bool(s.get("enabled") and s.get("base_url") and self.token)
+        self.base = (s.get("base_url") or "").rstrip("/")
         self.person_entity = s.get("person_entity", "")
         self.vacuum_entity = s.get("vacuum_entity", "vacuum.robot")
         self.zones = s.get("zones") or {"home": "home"}
@@ -141,3 +141,81 @@ class HomeAssistant:
         data = {"entity_id": self.vacuum_entity} if self.vacuum_entity else {}
         self.call("vacuum", service, data)
         return f"Vacuum {action} sent."
+
+    def find_entity(self, query: str, domain_filter: str = None):
+        """Search HA states for an entity matching query by entity_id or friendly name."""
+        if not self.enabled or not self.token:
+            return None
+        try:
+            states = self._get("/api/states")
+            if not isinstance(states, list):
+                return None
+        except Exception:
+            return None
+
+        q = query.strip().lower()
+        q = re.sub(r"^(?:the|my|a|an)\s+", "", q).strip()
+
+        # 1. Exact entity_id match (e.g. light.living_room or living_room)
+        for s in states:
+            eid = (s.get("entity_id") or "").lower()
+            if domain_filter and not eid.startswith(domain_filter + "."):
+                continue
+            if eid == q or eid.split(".", 1)[-1] == q:
+                return s
+
+        # 2. Exact friendly_name match
+        for s in states:
+            eid = (s.get("entity_id") or "").lower()
+            if domain_filter and not eid.startswith(domain_filter + "."):
+                continue
+            fn = ((s.get("attributes") or {}).get("friendly_name") or "").lower()
+            if fn == q:
+                return s
+
+        # 3. Substring match on friendly_name or entity_id
+        for s in states:
+            eid = (s.get("entity_id") or "").lower()
+            if domain_filter and not eid.startswith(domain_filter + "."):
+                continue
+            fn = ((s.get("attributes") or {}).get("friendly_name") or "").lower()
+            if q in fn or q in eid:
+                return s
+        return None
+
+    def device_control(self, action: str, target: str) -> str:
+        """Control a Home Assistant device (turn on, turn off, toggle)."""
+        if not self.enabled:
+            return "Home Assistant is not configured (skills.homeassistant in config)."
+        act = action.lower().strip()
+        svc = "turn_on" if act in ("turn on", "on", "start") else \
+              "turn_off" if act in ("turn off", "off", "stop") else \
+              "toggle" if act in ("toggle", "switch") else None
+        if not svc:
+            return f"Unknown device action: {action}"
+
+        ent = self.find_entity(target)
+        if not ent:
+            return f"I couldn't find a Home Assistant device matching {target!r}."
+
+        eid = ent["entity_id"]
+        fn = (ent.get("attributes") or {}).get("friendly_name") or eid
+        try:
+            self.call("homeassistant", svc, {"entity_id": eid})
+            verb = "turned on" if svc == "turn_on" else "turned off" if svc == "turn_off" else "toggled"
+            return f"⚡ {verb.capitalize()} {fn}."
+        except Exception as e:
+            return f"Failed to {svc.replace('_', ' ')} {fn}: {e}"
+
+    def device_state(self, target: str) -> str:
+        """Query state and attributes of an entity or device in Home Assistant."""
+        if not self.enabled:
+            return "Home Assistant is not configured (skills.homeassistant in config)."
+        ent = self.find_entity(target)
+        if not ent:
+            return f"I couldn't find a Home Assistant entity matching {target!r}."
+        fn = (ent.get("attributes") or {}).get("friendly_name") or ent["entity_id"]
+        st = ent.get("state", "unknown")
+        unit = (ent.get("attributes") or {}).get("unit_of_measurement", "")
+        val = f"{st} {unit}".strip() if unit else st
+        return f"📊 {fn} is currently {val}."

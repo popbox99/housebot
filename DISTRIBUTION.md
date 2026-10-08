@@ -73,7 +73,7 @@ For friends who love terminals, Linux, home servers, or Windows PowerShell.
 ### A. macOS & Linux (1-Line bash)
 Testers simply run:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/popbox99/housebot/master/install.sh | bash
 ```
 *What it does:*
 - Checks for Python 3.9+.
@@ -84,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/ins
 ### B. Windows PowerShell (1-Line PowerShell)
 In Windows PowerShell, testers run:
 ```powershell
-irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/popbox99/housebot/master/install.ps1 | iex
 ```
 *What it does:*
 - Downloads HouseBot into `%LOCALAPPDATA%\HouseBot`.
@@ -93,5 +93,5 @@ irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.ps
 
 ### C. Modern Python (`pipx` / `pip`)
 ```bash
-pipx run --spec git+https://github.com/popbox99/HouseBotInstaller.git housebot
+pipx run --spec git+https://github.com/popbox99/housebot.git housebot
 ```

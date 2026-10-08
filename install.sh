@@ -2,11 +2,11 @@
 # ==============================================================================
 # HouseBot 1-Line Installer for Linux and macOS (Option 3)
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/popbox99/housebot/master/install.sh | bash
 # ==============================================================================
 set -e
 
-REPO_URL="https://github.com/popbox99/HouseBotInstaller.git"
+REPO_URL="https://github.com/popbox99/housebot.git"
 INSTALL_DIR="${HOME}/.local/share/housebot-app"
 BIN_DIR="${HOME}/.local/bin"
 
@@ -36,7 +36,7 @@ else
     else
         echo "Creating directory..."
         mkdir -p "${INSTALL_DIR}"
-        curl -fsSL "https://github.com/popbox99/HouseBotInstaller/archive/refs/heads/main.tar.gz" | tar -xz --strip-components=1 -C "${INSTALL_DIR}"
+        curl -fsSL "https://github.com/popbox99/housebot/archive/refs/heads/master.tar.gz" | tar -xz --strip-components=1 -C "${INSTALL_DIR}"
     fi
 fi
 
@@ -46,11 +46,13 @@ VENV_DIR="${INSTALL_DIR}/.venv"
 if [ ! -d "${VENV_DIR}" ]; then
     python3 -m venv "${VENV_DIR}"
 fi
+"${VENV_DIR}/bin/pip" install --quiet -e "${INSTALL_DIR}" --no-deps
 
 # Create symlink or launcher script in ~/.local/bin
 cat << 'EOF' > "${BIN_DIR}/housebot"
 #!/usr/bin/env bash
 INSTALL_DIR="${HOME}/.local/share/housebot-app"
+export PYTHONPATH="${INSTALL_DIR}:${PYTHONPATH}"
 exec "${INSTALL_DIR}/.venv/bin/python" -m housebot "$@"
 EOF
 chmod +x "${BIN_DIR}/housebot"

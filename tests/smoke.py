@@ -663,6 +663,94 @@ def _test_installer_script_syntax():
 
 check("1-line installer script syntax", _test_installer_script_syntax)
 
+def _test_ha_device_control():
+    # 1. Keyword intent parsing
+    act1, arg1 = intents.keyword_intent("turn on the porch light")
+    if act1 != "DEVICE" or arg1 != "turn on:porch light":
+        raise AssertionError(f"intent turn on: got {act1}, {arg1}")
+
+    act2, arg2 = intents.keyword_intent("turn off bedroom lamp")
+    if act2 != "DEVICE" or arg2 != "turn off:bedroom lamp":
+        raise AssertionError(f"intent turn off: got {act2}, {arg2}")
+
+    act3, arg3 = intents.keyword_intent("check status of front door")
+    if act3 != "HA_STATE" or arg3 != "front door":
+        raise AssertionError(f"intent ha_state: got {act3}, {arg3}")
+
+    # 2. Engine unconfigured fallback
+    res, _ = engine.handle("t", "turn on the porch light")
+    if "Home Assistant" not in res:
+        raise AssertionError(f"expected unconfigured HA message, got {res}")
+
+    # 3. Unit test HomeAssistant skill with mock state & call
+    from housebot.skills.homeassistant import HomeAssistant
+    mock_cfg = Config(cfg_path)
+    mock_cfg._data["skills"]["homeassistant"] = {
+        "enabled": True, "base_url": "http://127.0.0.1:8123", "token": "test-token"
+    }
+    ha = HomeAssistant(mock_cfg)
+    ha._get = lambda path: [
+        {"entity_id": "light.porch_light", "state": "off", "attributes": {"friendly_name": "Porch Light"}},
+        {"entity_id": "binary_sensor.front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
+    ]
+    calls = []
+    ha.call = lambda dom, svc, data: calls.append((dom, svc, data))
+
+    # find_entity
+    ent = ha.find_entity("porch light")
+    if not ent or ent["entity_id"] != "light.porch_light":
+        raise AssertionError(f"find_entity failed: {ent}")
+
+    # device_control
+    ctl = ha.device_control("turn on", "porch light")
+    if "Turned on Porch Light" not in ctl or not calls:
+        raise AssertionError(f"device_control failed: {ctl}")
+
+    # device_state
+    st = ha.device_state("front door")
+    if "Front Door is currently off" not in st:
+        raise AssertionError(f"device_state failed: {st}")
+
+    return True
+
+check("homeassistant device control and state queries", _test_ha_device_control)
+
+def _test_ha_api_models():
+    from housebot.webui import WebUIServer, find_available_port
+    port = find_available_port(39100)
+    server = WebUIServer("127.0.0.1", port, cfg=cfg, engine=engine)
+    th = threading.Thread(target=server.serve_forever, daemon=True)
+    th.start()
+    try:
+        # GET /v1/models with bearer token
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/models",
+            headers={"Authorization": "Bearer housebot-local"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            if data.get("object") != "list" or not data.get("data"):
+                raise AssertionError(f"unexpected models response: {data}")
+
+        # POST /v1/chat/completions with bearer token
+        req_post = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            data=json.dumps({
+                "model": "housebot",
+                "messages": [{"role": "user", "content": "whats on my shopping list"}]
+            }).encode("utf-8"),
+            headers={"Authorization": "Bearer housebot-local", "Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_post, timeout=3) as r:
+            chat_data = json.loads(r.read().decode("utf-8"))
+            if chat_data.get("object") != "chat.completion" or not chat_data.get("choices"):
+                raise AssertionError(f"unexpected chat.completion response: {chat_data}")
+    finally:
+        server.shutdown()
+    return True
+
+check("homeassistant openai conversation v1 api endpoints", _test_ha_api_models)
+
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:
     print(("✓" if ok else "✗") + " " + name + (f"  — {err}" if err else ""))

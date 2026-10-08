@@ -1,7 +1,7 @@
 # ==============================================================================
 # HouseBot Uninstaller for Windows
 # Usage in PowerShell:
-#   irm https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/uninstall.ps1 | iex
+#   irm https://raw.githubusercontent.com/popbox99/housebot/master/uninstall.ps1 | iex
 # ==============================================================================
 $ErrorActionPreference = "SilentlyContinue"
 

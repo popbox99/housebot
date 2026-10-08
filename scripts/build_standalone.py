@@ -98,6 +98,7 @@ def build_executable(dist_dir: Path = None, onefile: bool = True) -> Path:
         "--hidden-import", "housebot.transports.cli",
         "--hidden-import", "housebot.transports.signal",
         "--hidden-import", "housebot.transports.telegram",
+        "--hidden-import", "housebot.uninstaller",
         "--collect-all", "housebot",
     ]
 

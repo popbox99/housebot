@@ -2,7 +2,7 @@
 # ==============================================================================
 # HouseBot Uninstaller for Linux and macOS
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/popbox99/HouseBotInstaller/main/uninstall.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/popbox99/housebot/master/uninstall.sh | bash
 # ==============================================================================
 set -e
 
