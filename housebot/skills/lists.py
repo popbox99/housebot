@@ -26,11 +26,12 @@ class Lists:
     def _read_note_lines(self, path):
         if not os.path.exists(path):
             return []
-        return [l.rstrip() for l in open(path)]
+        with open(path, "r", encoding="utf-8") as f:
+            return [l.rstrip() for l in f]
 
     def _write_note_lines(self, path, lines):
         tmp = path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
         os.replace(tmp, path)
 
@@ -47,7 +48,7 @@ class Lists:
             while j < len(lines) and (not lines[j].startswith("## ")):
                 j += 1
             insert_at = j
-            while insert_at > idx + 1 and lines[insert_at - 1].strip().startswith("-"):
+            while insert_at > idx + 1 and not lines[insert_at - 1].strip():
                 insert_at -= 1
             lines[insert_at:insert_at] = entry_lines
         else:
@@ -136,12 +137,13 @@ class Lists:
 
     def _load_memory(self):
         try:
-            return json.load(open(self.memory_file))
+            with open(self.memory_file, "r", encoding="utf-8") as f:
+                return json.load(f)
         except Exception:
             return {}
 
     def _save_memory(self, mem):
         tmp = self.memory_file + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(mem, f, indent=1)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(mem, f, indent=1, ensure_ascii=False)
         os.replace(tmp, self.memory_file)

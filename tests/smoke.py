@@ -42,6 +42,8 @@ engine = Engine(cfg)
 # stub the LLM so chat/classify have deterministic answers
 import housebot.llm as llm
 
+_REAL_ASK_LLM = llm.ask_llm
+
 
 def _stub_ask(cfg, prompt, history=None, backend=None, temperature=None):
     if "Classify the user request" in prompt:
@@ -338,6 +340,416 @@ check("signal allowlist fields", lambda: _signal_allowlist())
 check("ssrf blocks cgnat and rechecks redirects", lambda: _ssrf())
 check("caldav base_url does not crash startup", lambda: _caldav_starts())
 check("api auth no/bad/good token", _api_auth)
+
+# -- week 1 refactor test cases --
+
+def _test_attachment_tuple():
+    res = engine.handle("t", "", "/tmp/nonexistent.png")
+    if not isinstance(res, tuple) or len(res) != 2:
+        raise AssertionError(f"expected 2-tuple, got {type(res)}")
+    reply, att = res  # verify unpacking works
+    if not isinstance(reply, str):
+        raise AssertionError(f"expected string reply, got {type(reply)}")
+    return True
+
+check("attachment returns unpackable 2-tuple", _test_attachment_tuple)
+
+def _test_reminder_llm_fallback():
+    from housebot.skills.reminders import Reminders
+    # stub returns a json string (not a tuple)
+    stub_llm = lambda p: '{"when": "2026-10-15 14:00", "what": "inspect roof"}'
+    rem = Reminders(cfg, stub_llm)
+    # text that fails fast_parse_when and triggers llm_extract_when
+    msg = rem.add("remind me when it is sunny outside to inspect roof")
+    if "inspect roof" not in msg or "Oct 15" not in msg:
+        raise AssertionError(f"unexpected reminder confirmation: {msg}")
+    return True
+
+check("reminder llm fallback unpacks cleanly", _test_reminder_llm_fallback)
+
+def _test_caldav_complete_envelope():
+    from housebot.caldav import CalDAV
+    c = CalDAV(cfg)
+    c.get = lambda col: (
+        "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//test//EN\n"
+        "BEGIN:VTODO\nUID:task-123\nSUMMARY:test\nEND:VTODO\n"
+        "END:VCALENDAR"
+    )
+    captured = []
+    c.put = lambda col, fn, body: (captured.append(body) or True)
+    c.complete_vtodo("task-123")
+    if not captured:
+        raise AssertionError("put was not called")
+    body = captured[0]
+    if "BEGIN:VCALENDAR" not in body or "END:VCALENDAR" not in body:
+        raise AssertionError(f"missing VCALENDAR envelope in: {body}")
+    if "STATUS:COMPLETED" not in body:
+        raise AssertionError("missing STATUS:COMPLETED")
+    return True
+
+check("caldav complete_vtodo preserves vcalendar envelope", _test_caldav_complete_envelope)
+
+def _test_config_expand_lists():
+    c = Config()
+    c._data["skills"]["search_dirs"] = ["~/Documents", "~/Downloads"]
+    c._expand(c._data)
+    dirs = c._data["skills"]["search_dirs"]
+    if any(d.startswith("~") for d in dirs):
+        raise AssertionError(f"tilde not expanded in lists: {dirs}")
+    return True
+
+check("config _expand handles string lists", _test_config_expand_lists)
+
+def _test_shopping_order():
+    from housebot.skills.lists import Lists
+    import tempfile
+    test_cfg = Config()
+    test_cfg._data["skills"]["notes_dir"] = tempfile.mkdtemp()
+    l = Lists(test_cfg)
+    l.shopping_add(["first item"])
+    l.shopping_add(["second item"])
+    content = open(l.shopping_note, encoding="utf-8").read()
+    idx1 = content.find("first item")
+    idx2 = content.find("second item")
+    if idx1 == -1 or idx2 == -1 or idx1 >= idx2:
+        raise AssertionError(f"shopping list items not in chronological order:\n{content}")
+    return True
+
+check("shopping list preserves chronological insertion order", _test_shopping_order)
+
+def _test_hardware_module():
+    from housebot.hardware import inspect_hardware, recommend_model
+    hw = inspect_hardware()
+    if hw.total_ram_gb <= 0:
+        raise AssertionError("invalid RAM detected")
+    rec = recommend_model(hw)
+    if "recommended_model" not in rec or "tier" not in rec:
+        raise AssertionError(f"invalid recommendation: {rec}")
+    return True
+
+check("hardware detection and llm recommendation", _test_hardware_module)
+
+def _test_llm_api_key_header():
+    import housebot.llm as llm
+    test_cfg = {
+        "llm": {
+            "backends": [{
+                "name": "test-cloud",
+                "base_url": "http://127.0.0.1:9999",
+                "api": "openai",
+                "model": "test-model",
+                "api_key": "secret-test-key",
+                "timeout": 1
+            }]
+        }
+    }
+    # Intercept urllib to verify request headers
+    captured_reqs = []
+    real_urlopen = urllib.request.urlopen
+    def _mock_urlopen(req, **k):
+        captured_reqs.append(req)
+        class _Resp:
+            def read(self):
+                return b'{"choices": [{"message": {"content": "ok"}}]}'
+        return _Resp()
+    urllib.request.urlopen = _mock_urlopen
+    try:
+        reply, name = _REAL_ASK_LLM(test_cfg, "hello")
+        if not captured_reqs:
+            raise AssertionError("urlopen not called")
+        auth_header = captured_reqs[0].headers.get("Authorization")
+        if auth_header != "Bearer secret-test-key":
+            raise AssertionError(f"unexpected auth header: {auth_header}")
+    finally:
+        urllib.request.urlopen = real_urlopen
+    return True
+
+check("llm client supports api_key authorization header", _test_llm_api_key_header)
+
+# -- week 2 onboarding & installer test cases --
+
+def _test_detect_vaults():
+    from housebot.wizard import detect_obsidian_vaults
+    vaults = detect_obsidian_vaults()
+    if not isinstance(vaults, list):
+        raise AssertionError("detect_obsidian_vaults should return a list")
+    return True
+
+check("obsidian vault auto-detection", _test_detect_vaults)
+
+def _test_service_paths():
+    from housebot.service import get_service_paths
+    os_type, srv_path = get_service_paths()
+    if os_type not in ("linux", "darwin", "win32", "unknown"):
+        raise AssertionError(f"unexpected os_type: {os_type}")
+    if not str(srv_path):
+        raise AssertionError("service path cannot be empty")
+    return True
+
+check("cross-platform background service paths", _test_service_paths)
+
+def _test_cli_transport():
+    from housebot.transports.cli import CliTransport
+    cli = CliTransport(cfg, engine)
+    if cli.push is not False:
+        raise AssertionError("cli push should be False")
+    return True
+
+check("interactive cli transport initialization", _test_cli_transport)
+
+def _test_webui_server():
+    from housebot.webui import find_available_port, WebUIServer
+    import urllib.request
+    import json
+
+    test_port = find_available_port(47500)
+    server = WebUIServer("127.0.0.1", test_port, cfg=cfg, engine=engine)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+
+    try:
+        # 1. GET /
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/", timeout=3) as r:
+            if r.status != 200:
+                raise AssertionError(f"GET / failed with status {r.status}")
+            html = r.read().decode("utf-8")
+            if "HouseBot" not in html or "Dashboard" not in html:
+                raise AssertionError("Dashboard HTML missing expected title")
+
+        # 2. GET /api/status
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/status", timeout=3) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            if "configured" not in data or "version" not in data:
+                raise AssertionError("status API missing fields")
+
+        # 3. GET /api/hardware
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/hardware", timeout=3) as r:
+            hw_data = json.loads(r.read().decode("utf-8"))
+            if "profile" not in hw_data or "recommendation" not in hw_data:
+                raise AssertionError("hardware API missing fields")
+
+        # 4. GET /api/config
+        with urllib.request.urlopen(f"http://127.0.0.1:{test_port}/api/config", timeout=3) as r:
+            if r.status != 200:
+                raise AssertionError("/api/config status not 200")
+
+        # 5. POST /api/test-ha (validation failure check)
+        ha_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/test-ha",
+            data=json.dumps({"base_url": "http://127.0.0.1:9999", "token": "bad-token"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(ha_req, timeout=3) as r:
+            ha_res = json.loads(r.read().decode("utf-8"))
+            if ha_res.get("ok") is not False:
+                raise AssertionError("test-ha should return ok=False for unreachable host")
+
+        # 6. POST /api/uninstall (safe dry test)
+        uninst_req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/uninstall",
+            data=json.dumps({"remove_config": False, "remove_data": False}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(uninst_req, timeout=3) as r:
+            uninst_res = json.loads(r.read().decode("utf-8"))
+            if not uninst_res.get("ok"):
+                raise AssertionError("uninstall API should return ok=True")
+
+        # 7. POST /api/chat
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{test_port}/api/chat",
+            data=json.dumps({"message": "whats on my shopping list"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            chat_data = json.loads(r.read().decode("utf-8"))
+            if "reply" not in chat_data:
+                raise AssertionError("chat API missing reply field")
+    finally:
+        server.shutdown()
+        server.server_close()
+    return True
+
+check("webui server and rest endpoints", _test_webui_server)
+
+def _test_homeassistant_integration():
+    from housebot.skills.homeassistant import HomeAssistant
+    cfg_mock = Config()
+    cfg_mock._data["skills"]["homeassistant"] = {
+        "enabled": True,
+        "base_url": "http://127.0.0.1:8123",
+        "token": "test-long-lived-token",
+        "person_entity": "person.matt",
+        "vacuum_entity": "vacuum.robot",
+    }
+    ha = HomeAssistant(cfg_mock)
+    if not ha.enabled:
+        raise AssertionError("HomeAssistant skill should be enabled")
+    if ha.token != "test-long-lived-token":
+        raise AssertionError(f"Expected inline token 'test-long-lived-token', got {ha.token}")
+    return True
+
+check("homeassistant late-integration configuration", _test_homeassistant_integration)
+
+def _test_uninstaller_module():
+    from housebot.uninstaller import get_uninstall_targets, perform_uninstall
+    targets = get_uninstall_targets()
+    if "launchers" not in targets or "config" not in targets:
+        raise AssertionError("get_uninstall_targets missing required target keys")
+    ok, logs = perform_uninstall(remove_config=False, remove_data=False)
+    if not ok:
+        raise AssertionError(f"perform_uninstall failed: {logs}")
+    return True
+
+check("uninstaller module and safety checks", _test_uninstaller_module)
+
+def _test_uninstaller_script_syntax():
+    import subprocess
+    from pathlib import Path
+    sh_path = Path("uninstall.sh")
+    if not sh_path.exists():
+        raise AssertionError("uninstall.sh does not exist")
+    res = subprocess.run(["bash", "-n", str(sh_path)], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise AssertionError(f"uninstall.sh bash syntax error: {res.stderr}")
+    return True
+
+check("uninstaller script syntax", _test_uninstaller_script_syntax)
+
+def _test_standalone_binary():
+    import subprocess
+    from pathlib import Path
+    bin_path = Path("dist") / "HouseBot"
+    if not bin_path.exists():
+        raise AssertionError(f"dist/HouseBot binary does not exist at {bin_path}")
+    res = subprocess.run([str(bin_path), "--hardware"], capture_output=True, text=True, timeout=10)
+    if res.returncode != 0 or "Hardware Profile" not in res.stdout:
+        raise AssertionError(f"Binary execution failed: {res.stderr or res.stdout}")
+    return True
+
+check("standalone executable execution", _test_standalone_binary)
+
+def _test_telegram_demo_mode():
+    from housebot.transports.telegram import TelegramTransport
+    demo_cfg = {
+        "bot": {"allowed_senders": [], "demo_mode": True},
+        "transports": {"telegram": {"enabled": True, "token": "dummy-token"}}
+    }
+    tg = TelegramTransport(demo_cfg, engine)
+    if not tg.demo_mode:
+        raise AssertionError("demo_mode flag should be True")
+    # Verify star wildcard also enables demo_mode
+    star_cfg = {
+        "bot": {"allowed_senders": ["*"]},
+        "transports": {"telegram": {"enabled": True, "token": "dummy-token"}}
+    }
+    tg_star = TelegramTransport(star_cfg, engine)
+    if not tg_star.demo_mode:
+        raise AssertionError("star wildcard in allowed_senders should enable demo_mode")
+    return True
+
+check("telegram demo mode for public testers", _test_telegram_demo_mode)
+
+def _test_installer_script_syntax():
+    import subprocess
+    from pathlib import Path
+    sh_path = Path("install.sh")
+    if not sh_path.exists():
+        raise AssertionError("install.sh does not exist")
+    res = subprocess.run(["bash", "-n", str(sh_path)], capture_output=True, text=True)
+    if res.returncode != 0:
+        raise AssertionError(f"install.sh bash syntax error: {res.stderr}")
+    return True
+
+check("1-line installer script syntax", _test_installer_script_syntax)
+
+def _test_ha_device_control():
+    # 1. Keyword intent parsing
+    act1, arg1 = intents.keyword_intent("turn on the porch light")
+    if act1 != "DEVICE" or arg1 != "turn on:porch light":
+        raise AssertionError(f"intent turn on: got {act1}, {arg1}")
+
+    act2, arg2 = intents.keyword_intent("turn off bedroom lamp")
+    if act2 != "DEVICE" or arg2 != "turn off:bedroom lamp":
+        raise AssertionError(f"intent turn off: got {act2}, {arg2}")
+
+    act3, arg3 = intents.keyword_intent("check status of front door")
+    if act3 != "HA_STATE" or arg3 != "front door":
+        raise AssertionError(f"intent ha_state: got {act3}, {arg3}")
+
+    # 2. Engine unconfigured fallback
+    res, _ = engine.handle("t", "turn on the porch light")
+    if "Home Assistant" not in res:
+        raise AssertionError(f"expected unconfigured HA message, got {res}")
+
+    # 3. Unit test HomeAssistant skill with mock state & call
+    from housebot.skills.homeassistant import HomeAssistant
+    mock_cfg = Config(cfg_path)
+    mock_cfg._data["skills"]["homeassistant"] = {
+        "enabled": True, "base_url": "http://127.0.0.1:8123", "token": "test-token"
+    }
+    ha = HomeAssistant(mock_cfg)
+    ha._get = lambda path: [
+        {"entity_id": "light.porch_light", "state": "off", "attributes": {"friendly_name": "Porch Light"}},
+        {"entity_id": "binary_sensor.front_door", "state": "off", "attributes": {"friendly_name": "Front Door"}},
+    ]
+    calls = []
+    ha.call = lambda dom, svc, data: calls.append((dom, svc, data))
+
+    # find_entity
+    ent = ha.find_entity("porch light")
+    if not ent or ent["entity_id"] != "light.porch_light":
+        raise AssertionError(f"find_entity failed: {ent}")
+
+    # device_control
+    ctl = ha.device_control("turn on", "porch light")
+    if "Turned on Porch Light" not in ctl or not calls:
+        raise AssertionError(f"device_control failed: {ctl}")
+
+    # device_state
+    st = ha.device_state("front door")
+    if "Front Door is currently off" not in st:
+        raise AssertionError(f"device_state failed: {st}")
+
+    return True
+
+check("homeassistant device control and state queries", _test_ha_device_control)
+
+def _test_ha_api_models():
+    from housebot.webui import WebUIServer, find_available_port
+    port = find_available_port(39100)
+    server = WebUIServer("127.0.0.1", port, cfg=cfg, engine=engine)
+    th = threading.Thread(target=server.serve_forever, daemon=True)
+    th.start()
+    try:
+        # GET /v1/models with bearer token
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/models",
+            headers={"Authorization": "Bearer housebot-local"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            if data.get("object") != "list" or not data.get("data"):
+                raise AssertionError(f"unexpected models response: {data}")
+
+        # POST /v1/chat/completions with bearer token
+        req_post = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            data=json.dumps({
+                "model": "housebot",
+                "messages": [{"role": "user", "content": "whats on my shopping list"}]
+            }).encode("utf-8"),
+            headers={"Authorization": "Bearer housebot-local", "Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_post, timeout=3) as r:
+            chat_data = json.loads(r.read().decode("utf-8"))
+            if chat_data.get("object") != "chat.completion" or not chat_data.get("choices"):
+                raise AssertionError(f"unexpected chat.completion response: {chat_data}")
+    finally:
+        server.shutdown()
+    return True
+
+check("homeassistant openai conversation v1 api endpoints", _test_ha_api_models)
 
 failed = [(n, e) for n, ok, e in checks if not ok]
 for name, ok, err in checks:

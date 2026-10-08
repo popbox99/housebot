@@ -5,6 +5,7 @@ Backends speak either Ollama's /api/chat or any OpenAI-compatible /v1/chat/compl
 """
 
 import json
+import os
 import urllib.request
 
 
@@ -15,8 +16,17 @@ def ask_llm(cfg, prompt, history=None, backend=None, temperature=None):
     order = [backend] if backend else backends
     for b in order:
         try:
+            headers = {"Content-Type": "application/json"}
+            api_key = b.get("api_key") or ""
+            if not api_key and b.get("api_key_file") and os.path.exists(os.path.expanduser(b["api_key_file"])):
+                with open(os.path.expanduser(b["api_key_file"]), "r", encoding="utf-8") as f:
+                    api_key = f.read().strip()
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
             if b.get("api") == "openai":
-                url = b["base_url"].rstrip("/") + "/v1/chat/completions"
+                base = b["base_url"].rstrip("/")
+                url = base if base.endswith("/chat/completions") else (base + "/v1/chat/completions" if not base.endswith("/v1") else base + "/chat/completions")
                 messages = (history or []) + [{"role": "user", "content": prompt}]
                 payload = {"model": b["model"], "messages": messages, "stream": False}
                 if temperature is not None:
@@ -29,8 +39,9 @@ def ask_llm(cfg, prompt, history=None, backend=None, temperature=None):
                     payload["options"] = {"temperature": temperature}
             req = urllib.request.Request(
                 url, data=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=120) as r:
+                headers=headers)
+            timeout = b.get("timeout", 60)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = json.loads(r.read())
             if b.get("api") == "openai":
                 text = data["choices"][0]["message"]["content"]

@@ -11,7 +11,8 @@ CLASSIFIER_PROMPT = (
     "SHOPPING <items or 'remove X' or 'list'> | CHORE <what was done or 'status'> | "
     "HABIT <what to log> | REMEMBER <fact> | FORGET <topic> | MEMORY <topic> | "
     "HID <item> in <location> | PHOTOS <query> | PAPERLESS <question> | "
-    "BATTERIES | VACUUM <start|dock|status>\n"
+    "BATTERIES | VACUUM <start|dock|status> | DEVICE <turn on|turn off|toggle>:<target> | "
+    "HA_STATE <target>\n"
     "Examples:\n"
     "Request: remind me in 2 hours to check the dryer -> REMIND in 2 hours check the dryer\n"
     "Request: remind me to call dana reyes tomorrow at 3pm -> REMIND call dana reyes tomorrow at 3pm\n"
@@ -41,6 +42,9 @@ CLASSIFIER_PROMPT = (
     "Request: what does my warranty say about the furnace -> PAPERLESS warranty furnace\n"
     "Request: how are the batteries -> BATTERIES\n"
     "Request: start the vacuum -> VACUUM start\n"
+    "Request: turn on the porch light -> DEVICE turn on:porch light\n"
+    "Request: turn off the bedroom lamp -> DEVICE turn off:bedroom lamp\n"
+    "Request: check status of front door -> HA_STATE front door\n"
     "Follow-up rule: short follow-ups like what about X / and X inherit the topic of the previous exchange.\n"
 )
 
@@ -118,6 +122,17 @@ def keyword_intent(t):
         return "BATTERIES", ""
     if re.search(r"\bvacuum\b", t) and re.search(r"\b(start|stop|dock|status|clean)\b", t):
         return "VACUUM", re.sub(r"\b(the|vacuum)\b", "", t, flags=re.I).strip()[:40]
+    # Home Assistant device control (lights, switches, plugs, etc.)
+    m_dev = re.search(r"^(?:please\s+)?(turn\s+on|turn\s+off|switch\s+on|switch\s+off|toggle)\s+(?:the\s+)?(.+)$", t, re.I)
+    if m_dev:
+        act = "turn on" if "on" in m_dev.group(1).lower() else "turn off" if "off" in m_dev.group(1).lower() else "toggle"
+        return "DEVICE", f"{act}:{m_dev.group(2).strip()}"
+    # Home Assistant device / entity state query
+    m_st = re.search(r"^(?:what(?:'s| is) the (?:status|state) of|how(?:'s| is) the|check the (?:status|state) of|check (?:the )?status of)\s+(?:the\s+)?(.+)$", t, re.I)
+    if m_st:
+        target = re.sub(r"\?+$", "", m_st.group(1)).strip()
+        if not re.search(r"\b(batter(y|ies)|weather|forecast|chore|vacuum)\b", target, re.I):
+            return "HA_STATE", target
     return None, None
 
 
@@ -133,7 +148,7 @@ def classify_llm(chat, t, history=None):
         r"\b(FIND|CHAT|WEATHER|SEARCH_WEB|SUMMARIZE|READ_URL|EVENT|TASK|AGENDA|"
         r"REMIND|NOTE|CONTACT|CONTACT_INFO|REMINDERS|COMPLETE|LOCATION|SHOPPING|"
         r"CHORE|HABIT|REMEMBER|FORGET|MEMORY|HID|PHOTOS|PAPERLESS|BATTERIES|"
-        r"VACUUM)\b\s*[:]?(.*)$",
+        r"VACUUM|DEVICE|HA_STATE)\b\s*[:]?(.*)$",
         line)
     if not m:
         return "CHAT", ""

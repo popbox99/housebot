@@ -1,0 +1,54 @@
+name: Build Standalone Executables
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: HouseBot-Windows-x64.exe
+            dist_file: dist/HouseBot.exe
+          - os: macos-latest
+            artifact_name: HouseBot-macOS-arm64
+            dist_file: dist/HouseBot
+          - os: ubuntu-latest
+            artifact_name: HouseBot-Linux-x86_64
+            dist_file: dist/HouseBot
+
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller>=6.0
+
+      - name: Build standalone executable
+        run: |
+          python scripts/build_standalone.py
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.dist_file }}
+          if-no-files-found: error

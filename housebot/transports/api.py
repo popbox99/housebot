@@ -20,6 +20,7 @@ class ApiTransport:
 
     def __init__(self, cfg, engine):
         self.engine = engine
+        self.host = cfg["transports"]["api"].get("host", "127.0.0.1")
         self.port = cfg["transports"]["api"].get("port", 8082)
         self.token = cfg["transports"]["api"].get("token", "")
         if not self.token or self.token == DEFAULT_TOKEN:
@@ -41,6 +42,28 @@ class ApiTransport:
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):
                 pass
+
+            def do_GET(self):
+                if not auth(self.headers.get("Authorization", "")):
+                    self.send_response(401); self.end_headers(); return
+                if self.path.endswith("/models"):
+                    out = {
+                        "object": "list",
+                        "data": [{
+                            "id": "housebot",
+                            "object": "model",
+                            "created": 1677610602,
+                            "owned_by": "housebot"
+                        }]
+                    }
+                    data = json.dumps(out).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+                self.send_response(404); self.end_headers()
 
             def do_POST(self):
                 if not auth(self.headers.get("Authorization", "")):
@@ -76,6 +99,6 @@ class ApiTransport:
                 self.end_headers()
                 self.wfile.write(data)
 
-        server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
-        print(f"[api] listening on 127.0.0.1:{self.port} (token required)")
+        server = ThreadingHTTPServer((self.host, self.port), Handler)
+        print(f"[api] listening on {self.host}:{self.port} (token required)")
         server.serve_forever()

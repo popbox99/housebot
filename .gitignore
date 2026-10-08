@@ -29,3 +29,9 @@ ADMIN_CREDENTIALS
 __pycache__/
 *.pyc
 .venv/
+
+# build & distribution artifacts
+build/
+dist/
+*.spec
+*.egg-info/

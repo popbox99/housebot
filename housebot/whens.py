@@ -133,7 +133,7 @@ def fast_parse_when(text, now=None):
             hour = 0
         elif meridiem is None and hour <= 7 and not dayw and now.hour >= 12:
             hour += 12
-        off, bump = _day_offset_for(dayw.strip(), m.group(1), now)
+        off, bump = _day_offset_for(dayw.strip(), qual, now)
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=off)
         if target <= now:
             target += timedelta(days=bump)
@@ -161,7 +161,11 @@ def llm_extract_when(ask_llm_fn, text, now=None):
     prompt = (f"Now is {now.strftime('%Y-%m-%d %H:%M %A')}. Extract WHEN the reminder "
               f'should fire and WHAT to remind about. Reply with ONLY JSON: '
               f'{{"when": "YYYY-MM-DD HH:MM", "what": "..."}}.\nMessage: ' + text)
-    raw, _name = ask_llm_fn(prompt)
+    res = ask_llm_fn(prompt)
+    if isinstance(res, tuple):
+        raw = res[0]
+    else:
+        raw = res
     if not raw:
         return None, None
     try:

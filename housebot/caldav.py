@@ -105,10 +105,17 @@ class CalDAV:
         if not block:
             return False
         if "STATUS:" in block:
-            block = re.sub(r"STATUS:.*", "STATUS:COMPLETED", block)
+            new_block = re.sub(r"STATUS:.*", "STATUS:COMPLETED", block)
         else:
-            block = block.replace("END:VTODO", "STATUS:COMPLETED\nEND:VTODO")
-        return self.put(self.tasks, uid + ".ics", block + "\n")
+            new_block = block.replace("END:VTODO", "STATUS:COMPLETED\nEND:VTODO")
+        body = (
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "PRODID:-//housebot//EN\n"
+            f"{new_block}\n"
+            "END:VCALENDAR\n"
+        )
+        return self.put(self.tasks, uid + ".ics", body)
 
 
 def _esc(s):
